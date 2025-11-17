@@ -20,6 +20,11 @@ export type RestaurantListResponse = {
     totalPages: number;
 };
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(
+    /\/$/,
+    ''
+);
+
 export async function fetchRestaurants(params: {
     keyword?: string;
     page?: number;
@@ -31,9 +36,16 @@ export async function fetchRestaurants(params: {
         page: String(page),
         size: String(size),
     });
-    const res = await fetch(`/api/v1/restaurants?${qs.toString()}`, {
-        cache: 'no-store',
-    });
+    const url = `${API_BASE}/api/v1/restaurants?${qs.toString()}`.replace(
+        /^\//,
+        ''
+    );
+    const res = await fetch(
+        url.startsWith('http') ? url : `/api/v1/restaurants?${qs.toString()}`,
+        {
+            cache: 'no-store',
+        }
+    );
     if (!res.ok) {
         throw new Error(`Failed to fetch restaurants: ${res.status}`);
     }
@@ -48,11 +60,15 @@ export async function createRestaurant(payload: {
     latitude: number;
     longitude: number;
 }): Promise<void> {
-    const res = await fetch('/api/v1/restaurants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
+    const postUrl = `${API_BASE}/api/v1/restaurants`;
+    const res = await fetch(
+        postUrl.startsWith('http') ? postUrl : '/api/v1/restaurants',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        }
+    );
     if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || '등록 실패');

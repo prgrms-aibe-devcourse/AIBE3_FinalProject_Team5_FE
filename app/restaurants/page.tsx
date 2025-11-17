@@ -61,25 +61,24 @@ export default function RestaurantsPage() {
     return (
         <div className="min-h-screen flex flex-col bg-background">
             <Header />
-            {/* Header */}
-            <div className="border-b bg-white dark:bg-card sticky top-0 z-30">
-                <div className="container mx-auto px-4 py-3">
-                    <SearchBar
-                        keyword={keyword}
-                        onKeywordChange={setKeyword}
-                        onSearch={() => {
-                            setPage(1);
-                            loadRestaurants(keyword, 1);
-                        }}
-                    />
-                </div>
-            </div>
+            {/* Header 제거: 검색 바를 리스트 패널 상단으로 이동 */}
 
             <div
-                className="flex flex-1 min-h-[calc(98vh-120px)]"
-                style={{ height: 'calc(98vh - 120px)' }}
+                className="flex flex-1 min-h-[calc(104vh-120px)]"
+                style={{ height: 'calc(104vh - 120px)' }}
             >
                 <div className="w-[30%] min-w-[280px] max-w-[400px] border-r bg-white dark:bg-card overflow-y-auto">
+                    {/* 리스트 패널 상단 검색바 */}
+                    <div className="p-4 border-b">
+                        <SearchBar
+                            keyword={keyword}
+                            onKeywordChange={setKeyword}
+                            onSearch={() => {
+                                setPage(1);
+                                loadRestaurants(keyword, 1);
+                            }}
+                        />
+                    </div>
                     <div className="p-4 border-b bg-muted/30">
                         <div className="flex items-center justify-between">
                             <p className="text-sm font-medium">

@@ -19,13 +19,13 @@ type Marker = {
 type KakaoMapProps = {
     className?: string;
     center?: { lat: number; lng: number };
-    level?: number; // 1(가까움) ~ 14(멀어짐)
+    level?: number;
     markers?: Marker[];
     onMapClick?: (pos: { lat: number; lng: number }) => void;
-    enableClickDebug?: boolean; // 클릭 시 좌표 로그 및 임시 마커 표시(테스트용)
-    lookupOnClick?: boolean; // 클릭 지점 주변 장소/주소 조회
-    placeSearchRadius?: number; // 반경(m), 기본 1000
-    placeCategory?: string; // Kakao 카테고리 코드 (예: 'FD6' 음식점)
+    enableClickDebug?: boolean;
+    lookupOnClick?: boolean;
+    placeSearchRadius?: number;
+    placeCategory?: string;
     onLookupResult?: (result: {
         center: { lat: number; lng: number };
         address?: { address?: string; roadAddress?: string };
@@ -63,24 +63,8 @@ export default function KakaoMap({
     const clickDebugMarkerRef = useRef<any | null>(null);
     const clickHandlerRef = useRef<any | null>(null);
 
-    const [appKey, setAppKey] = useState<string>('');
-    const [fetchError, setFetchError] = useState<string | null>(null);
-
-    useEffect(() => {
-        fetch('/api/kakao-key')
-            .then((r) => r.json())
-            .then((d) => {
-                if (d.appKey && d.appKey !== 'YOUR_KAKAO_JAVASCRIPT_KEY') {
-                    setAppKey(d.appKey);
-                } else {
-                    setFetchError('유효한 카카오 JavaScript 키가 아닙니다.');
-                }
-            })
-            .catch((e) => {
-                setFetchError('키를 가져오지 못했습니다.');
-                console.error('[KakaoMap] fetch /api/kakao-key error', e);
-            });
-    }, []);
+    const envKey = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY ?? '';
+    const invalidKey = !envKey;
 
     useEffect(() => {
         if (typeof window !== 'undefined' && (window as any).kakao?.maps) {
@@ -295,7 +279,7 @@ export default function KakaoMap({
         placeCategory,
     ]);
 
-    if (fetchError) {
+    if (invalidKey) {
         return (
             <div
                 className={
@@ -303,20 +287,8 @@ export default function KakaoMap({
                     (className ?? '')
                 }
             >
-                {fetchError}
-            </div>
-        );
-    }
-
-    if (!appKey) {
-        return (
-            <div
-                className={
-                    'flex items-center justify-center text-sm text-muted-foreground bg-white ' +
-                    (className ?? '')
-                }
-            >
-                지도 키 로딩 중...
+                카카오 JavaScript 키가 설정되지 않았습니다. 환경변수
+                NEXT_PUBLIC_KAKAO_MAP_API_KEY를 확인하세요.
             </div>
         );
     }
@@ -325,7 +297,7 @@ export default function KakaoMap({
         <>
             <Script
                 id="kakao-maps-sdk"
-                src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=services,clusterer`}
+                src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${envKey}&autoload=false&libraries=services,clusterer`}
                 strategy="afterInteractive"
                 onLoad={() => {
                     console.debug('[KakaoMap] Kakao SDK script loaded');

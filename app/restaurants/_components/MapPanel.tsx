@@ -30,7 +30,7 @@ export default function MapPanel({ center, markers, onMapClick }: Props) {
             />
 
             {/* Static sample overlays preserved */}
-            <div className="absolute top-4 right-4 space-y-2">
+            {/* <div className="absolute top-4 right-4 space-y-2">
                 <Card className="shadow-lg">
                     <CardContent className="p-3">
                         <div className="flex items-center gap-2">
@@ -53,7 +53,7 @@ export default function MapPanel({ center, markers, onMapClick }: Props) {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
+            </div> */}
         </div>
     );
 }

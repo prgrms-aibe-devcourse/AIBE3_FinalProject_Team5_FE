@@ -20,7 +20,7 @@ export default function SearchBar({
             <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                    placeholder="음식점, 지역, 음식 종류로 검색..."
+                    placeholder="음식점 검색"
                     className="pl-10"
                     value={keyword}
                     onChange={(e) => onKeywordChange(e.target.value)}
