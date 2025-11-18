@@ -1,24 +1,24 @@
-"use client"
-import { useEffect } from "react"
-import { HeroSection } from "@/components/hero-section"
-import { ServicesSection } from "@/components/services-section"
-import { LatestPostsSection } from "@/components/latest-posts-section"
-import { CtaSection } from "@/components/cta-section"
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
-import ScrollIndicator from "@/components/scroll-indicator"
-import BackgroundSlideshow from "@/components/background-slideshow"
+"use client";
+import { useEffect } from "react";
+import { HeroSection } from "@/components/hero-section";
+import { ServicesSection } from "@/components/services-section";
+import { LatestPostsSection } from "@/components/latest-posts-section";
+import { CtaSection } from "@/components/cta-section";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
+import ScrollIndicator from "@/components/scroll-indicator";
+import BackgroundSlideshow from "@/components/background-slideshow";
 
 export default function Home() {
   useEffect(() => {
-    if (typeof window === "undefined") return
-    const prev = document.body.style.overflow
+    if (typeof window === "undefined") return;
+    const prev = document.body.style.overflow;
     // Hide body scrollbar while home is mounted so the inner main handles scrolling
-    document.body.style.overflow = "hidden"
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = prev || ""
-    }
-  }, [])
+      document.body.style.overflow = prev || "";
+    };
+  }, []);
   return (
     <div className="min-h-screen overflow-hidden relative">
       <BackgroundSlideshow images={["/bg-user.jpg"]} />
@@ -76,5 +76,5 @@ export default function Home() {
 
       <ScrollIndicator />
     </div>
-  )
+  );
 }
