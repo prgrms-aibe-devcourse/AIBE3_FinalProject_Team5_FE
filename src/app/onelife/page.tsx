@@ -159,7 +159,7 @@ export default function OneLifePage() {
             <section className="py-8">
                 <div className="container mx-auto px-4">
                     <div className="flex flex-col lg:flex-row gap-8">
-                        <aside className="lg:w-64 flex-shrink-0">
+                        <aside className="lg:w-64 shrink-0">
                             <Card className="sticky top-20">
                                 <CardContent className="p-6">
                                     <h3 className="font-semibold mb-4">
