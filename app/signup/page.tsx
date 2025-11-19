@@ -31,6 +31,7 @@ export default function SignupPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPage, setTotalPage] = useState(0);
+  const [nicknameAvailable, setNicknameAvailable] = useState(false);
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -80,6 +81,21 @@ export default function SignupPage() {
 
   const removeRegion = (region: string) => {
     setRegions(regions.filter((n) => n.full !== region));
+  };
+
+  const checkNicknameAvailable = async () => {
+    const res = await fetch(
+      `${baseUrl}/api/v1/auth/check-nickname?nickname=${nickname}`
+    );
+    const result = await res.json();
+
+    if (result?.data == true) {
+      if (confirm("사용 가능한 닉네임 입니다. 사용 하시겠습니까?")) {
+        setNicknameAvailable(true);
+      }
+    } else {
+      alert("사용 불가능한 닉네임 입니다. 다시 입력해 주세요.");
+    }
   };
 
   const searchRegion = async (query: string) => {
@@ -136,14 +152,25 @@ export default function SignupPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">닉네임</label>
-                    <Input
-                      placeholder="사용할 닉네임을 입력하세요"
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                      required
-                    />
+                  <label className="text-sm font-medium">닉네임</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-2">
+                      <Input
+                        placeholder="사용할 닉네임을 입력하세요"
+                        value={nickname}
+                        onChange={(e) => setNickname(e.target.value)}
+                        disabled={nicknameAvailable}
+                        required
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        checkNicknameAvailable();
+                      }}
+                    >
+                      중복 확인
+                    </Button>
                   </div>
 
                   <div className="space-y-2">
