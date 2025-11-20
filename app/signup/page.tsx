@@ -32,11 +32,30 @@ export default function SignupPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPage, setTotalPage] = useState(0);
   const [nicknameAvailable, setNicknameAvailable] = useState(false);
+  const [emailAvailable, setEmailAvailable] = useState(false);
+  const [emailWait, setEamilWait] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (nicknameAvailable !== true) {
+      alert("닉네임 중복확인을 해주세요.");
+      return;
+    }
+
+    if (emailAvailable !== true) {
+      alert("이메일 인증을 해주세요.");
+      return;
+    }
+
+    if (password.length < 8) {
+      alert("비밀번호는 8자 이상 입력해 주세요.");
+      return;
+    }
 
     if (password !== passwordConfirm) {
       alert("비밀번호가 일치하지 않습니다.");
@@ -95,6 +114,47 @@ export default function SignupPage() {
       }
     } else {
       alert("사용 불가능한 닉네임 입니다. 다시 입력해 주세요.");
+    }
+  };
+
+  const sendEmailVerification = async () => {
+    if (emailWait == true) return;
+
+    setLoading(true);
+    setEamilWait(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/email/send?email=${email}`, {
+        method: "POST",
+      });
+      const result = await res.json();
+
+      if (result?.data == true) {
+        alert("인증 메일을 전송했습니다.");
+      } else {
+        alert("사용 불가능한 이메일 입니다. 다시 입력해 주세요.");
+        setEamilWait(false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkEmailVerification = async () => {
+    const res = await fetch(
+      `${baseUrl}/api/v1/email/verify?email=${email}&verificationCode=${verificationCode}`,
+      {
+        method: "POST",
+      }
+    );
+    const result = await res.json();
+
+    if (result?.data == true) {
+      alert("인증이 완료 되었습니다.");
+      setEmailAvailable(true);
+      setEamilWait(false);
+    } else {
+      alert("인증에 실패 하였습니다. 다시 시도해 주세요.");
+      setVerificationCode("");
     }
   };
 
@@ -173,16 +233,51 @@ export default function SignupPage() {
                     </Button>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">이메일</label>
+                  <label className="text-sm font-medium">이메일</label>
+                  <div className="flex gap-2">
                     <Input
                       type="email"
                       placeholder="example@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      disabled={emailAvailable || emailWait}
                     />
+                    <Button
+                      type="button"
+                      disabled={emailWait || emailAvailable}
+                      onClick={() => {
+                        sendEmailVerification();
+                      }}
+                    >
+                      {loading ? "로딩중..." : "이메일 인증"}
+                    </Button>
                   </div>
+                  {emailWait == true && (
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        placeholder="인증번호"
+                        value={verificationCode}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, "");
+                          setVerificationCode(val === "" ? "" : val);
+                        }}
+                        required
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          checkEmailVerification();
+                        }}
+                      >
+                        인증 확인
+                      </Button>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">비밀번호</label>
