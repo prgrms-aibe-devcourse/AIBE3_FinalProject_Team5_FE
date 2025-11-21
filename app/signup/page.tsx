@@ -52,8 +52,8 @@ export default function SignupPage() {
       return;
     }
 
-    if (password.length < 8) {
-      alert("비밀번호는 8자 이상 입력해 주세요.");
+    if (password.length < 8 || password.length > 13) {
+      alert("비밀번호는 8자 이상 13자 이하로 입력해 주세요.");
       return;
     }
 
@@ -243,15 +243,26 @@ export default function SignupPage() {
                       required
                       disabled={emailAvailable || emailWait}
                     />
-                    <Button
-                      type="button"
-                      disabled={emailWait || emailAvailable}
-                      onClick={() => {
-                        sendEmailVerification();
-                      }}
-                    >
-                      {loading ? "로딩중..." : "이메일 인증"}
-                    </Button>
+                    {emailWait ? (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setEamilWait(false);
+                        }}
+                      >
+                        이메일 변경
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        disabled={emailWait || emailAvailable}
+                        onClick={() => {
+                          sendEmailVerification();
+                        }}
+                      >
+                        {loading ? "로딩중..." : "이메일 인증"}
+                      </Button>
+                    )}
                   </div>
                   {emailWait == true && (
                     <div className="flex gap-2">
