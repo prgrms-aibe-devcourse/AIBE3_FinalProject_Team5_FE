@@ -19,6 +19,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const { setAccessToken, setApiKey } = useAuth();
 
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const frontedBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+  const redirectUrl = encodeURIComponent(`${frontedBaseUrl}`);
+
+  const kakaoLoginUrl = `${apiBaseUrl}/oauth2/authorization/kakao?redirectUrl=${redirectUrl}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     e.preventDefault();
@@ -67,7 +73,7 @@ export default function LoginPage() {
   };
 
   const handleKakaoLogin = () => {
-    //TODO 카카오 Oauth 구현
+    window.location.href = `${kakaoLoginUrl}`;
   };
 
   return (
