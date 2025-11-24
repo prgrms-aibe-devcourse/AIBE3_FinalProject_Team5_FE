@@ -99,7 +99,7 @@ export default function WritePostPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="꿀팁">꿀팁</SelectItem>
-                        <SelectItem value="혼밥">혼밥</SelectItem>
+                        <SelectItem value="자유">자유</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
