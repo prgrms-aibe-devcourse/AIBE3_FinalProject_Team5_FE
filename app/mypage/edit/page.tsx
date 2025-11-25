@@ -60,11 +60,13 @@ export default function ProfileEditPage() {
 
     if (nicknameAvailable !== true && formData?.nickname !== prevNickname) {
       alert("닉네임 중복확인을 해주세요.");
+      setIsSubmitting(false);
       return;
     }
 
     if (emailAvailable !== true && formData?.email !== prevEmail) {
       alert("이메일 인증을 해주세요.");
+      setIsSubmitting(false);
       return;
     }
 
@@ -489,20 +491,24 @@ export default function ProfileEditPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start bg-transparent"
-                    >
-                      비밀번호 변경
-                    </Button>
+                    <Link href="/mypage/password-change">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start bg-transparent"
+                      >
+                        비밀번호 변경
+                      </Button>
+                    </Link>
                   </div>
                   <div>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-destructive hover:text-destructive bg-transparent"
-                    >
-                      계정 탈퇴
-                    </Button>
+                    <Link href="/mypage/delete-account">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-destructive hover:text-destructive bg-transparent"
+                      >
+                        계정 탈퇴
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
