@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -9,12 +9,15 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/app/global/auth/useAuth";
+import { useRouter } from "next/navigation";
 
 export default function DeleteAccountPage() {
+  const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { loginMember, isLogin, logoutMember } = useAuth();
+  const { logoutMember, reloadMember, loginMember, isLogin } = useAuth();
+  const [social, setSocial] = useState(false);
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -49,6 +52,17 @@ export default function DeleteAccountPage() {
     }
   };
 
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -62,21 +76,27 @@ export default function DeleteAccountPage() {
                   회원탈퇴
                 </CardTitle>
                 <p className="text-sm text-muted-foreground text-center">
-                  탈퇴를 진행하려면 비밀번호를 입력해주세요
+                  정말 탈퇴를 진행합니까?
                 </p>
               </CardHeader>
 
               <CardContent className="space-y-4">
                 <form onSubmit={handleDelete} className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">비밀번호 확인</label>
-                    <Input
-                      type="password"
-                      placeholder="현재 비밀번호"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
+                    {loginMember?.email?.split("__")[0] !== "KAKAO" && (
+                      <>
+                        <label className="text-sm font-medium">
+                          비밀번호 확인
+                        </label>
+                        <Input
+                          type="password"
+                          placeholder="현재 비밀번호"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                      </>
+                    )}
                   </div>
 
                   {error && <p className="text-red-500 text-sm">{error}</p>}
