@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { useAuth } from "@/app/global/auth/useAuth";
 
 export default function PasswordChangePage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function PasswordChangePage() {
   const [error, setError] = useState("");
   const [authCode, setAuthCode] = useState("");
   const [emailWait, setEamilWait] = useState(false);
+  const { reloadMember } = useAuth();
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -93,6 +95,18 @@ export default function PasswordChangePage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

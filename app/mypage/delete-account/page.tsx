@@ -16,8 +16,7 @@ export default function DeleteAccountPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { logoutMember, reloadMember, loginMember, isLogin } = useAuth();
-  const [social, setSocial] = useState(false);
+  const { logoutMember, reloadMember, loginMember } = useAuth();
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -56,6 +55,7 @@ export default function DeleteAccountPage() {
     const check = async () => {
       const login = await reloadMember();
       if (login === false) {
+        alert("로그인 후 이용해 주세요.");
         router.push("/login");
       }
     };

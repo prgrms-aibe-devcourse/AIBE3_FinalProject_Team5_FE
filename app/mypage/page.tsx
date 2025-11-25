@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ interface User {
 }
 
 export default function MyPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
   const [chatType, setChatType] = useState<"small-group" | "group-buying">(
     "small-group"
@@ -51,7 +53,7 @@ export default function MyPage() {
     new Set()
   );
   const [postCategory, setPostCategory] = useState<string>("전체");
-  const { loginMember, isLogin } = useAuth();
+  const { loginMember, isLogin, reloadMember } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [loading, setLoading] = useState(false);
@@ -305,6 +307,18 @@ export default function MyPage() {
     "전체",
     ...Array.from(new Set(myPosts.map((post) => post.category))),
   ];
+
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
