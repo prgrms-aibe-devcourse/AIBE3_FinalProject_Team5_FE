@@ -23,3 +23,16 @@ export async function getOneLifePosts({
   if (!res.ok) throw new Error("게시글 목록을 불러오지 못했습니다.");
   return res.json();
 }
+
+export async function getPostDetail(id: string) {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/posts/onelife/${id}`,
+    {
+      method: "GET",
+      credentials: "include",
+    }
+  );
+
+  const json = await res.json();
+  return json.data;
+}
