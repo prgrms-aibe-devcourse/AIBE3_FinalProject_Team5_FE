@@ -35,7 +35,7 @@ export default function ProfileEditPage() {
   const router = useRouter();
   const [formData, setFormData] = useState<FormData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { loginMember, isLogin } = useAuth();
+  const { loginMember, isLogin, reloadMember } = useAuth();
   const [loading, setLoading] = useState(false);
   const [prevNickname, setPrevNickname] = useState("");
   const [nicknameAvailable, setNicknameAvailable] = useState(false);
@@ -268,6 +268,18 @@ export default function ProfileEditPage() {
       return prev;
     });
   };
+
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
