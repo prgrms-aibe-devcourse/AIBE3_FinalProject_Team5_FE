@@ -47,7 +47,6 @@ export default function LoginPage() {
       }
 
       const data = await res.json();
-      console.log("이게 데이터", data);
 
       if (res.ok) {
         const authHeader = res.headers.get("Authorization");

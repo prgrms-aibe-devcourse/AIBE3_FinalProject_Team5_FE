@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -108,15 +109,33 @@ export function Header() {
           {isLogin ? (
             <>
               <span className="text-sm font-medium text-muted-foreground">
-                {loginMember?.nickname} 님
+                어서오세요{" "}
+                <span className="text-sm font-bold">
+                  {loginMember?.nickname}
+                </span>{" "}
+                님
               </span>
+
+              {/* 마이페이지 아이콘 버튼 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                asChild
+                className="w-8 h-8 p-0 border rounded-md hover:bg-accent"
+              >
+                <Link href="/mypage">
+                  <User className="h-5 w-5" />
+                </Link>
+              </Button>
+
+              {/* 로그아웃 아이콘 버튼 */}
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={logout}
-                className="text-red-500 border-red-300 hover:bg-red-50"
+                className="w-8 h-8 p-0 border border-red-300 text-red-500 rounded-md hover:bg-red-50"
               >
-                로그아웃
+                <LogOut className="h-5 w-5" />
               </Button>
             </>
           ) : (
