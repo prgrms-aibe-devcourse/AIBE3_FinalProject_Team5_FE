@@ -1,62 +1,122 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { X, Search } from "lucide-react"
+import type React from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { X, Search } from "lucide-react";
+
+interface Region {
+  code: string;
+  full: string;
+  small: string;
+}
 
 export default function SignupPage() {
-  const router = useRouter()
-  const [nickname, setNickname] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [passwordConfirm, setPasswordConfirm] = useState("")
-  const [neighborhoods, setNeighborhoods] = useState<string[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter();
+  const [nickname, setNickname] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPage, setTotalPage] = useState(0);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
     if (password !== passwordConfirm) {
-      alert("비밀번호가 일치하지 않습니다.")
-      return
+      alert("비밀번호가 일치하지 않습니다.");
+      return;
     }
 
-    if (neighborhoods.length === 0) {
-      alert("최소 1개의 동네를 선택해주세요.")
-      return
+    if (regions.length === 0) {
+      alert("최소 1개의 동네를 선택해주세요.");
+      return;
     }
 
-    console.log("[v0] Signup data:", {
+    const signupData = {
       nickname,
       email,
       password,
-      neighborhoods,
-    })
+      regions,
+    };
 
-    // TODO: Implement actual signup logic with backend
-    router.push("/login")
-  }
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(signupData),
+      });
 
-  const addNeighborhood = () => {
-    if (searchQuery.trim() && neighborhoods.length < 4) {
-      if (!neighborhoods.includes(searchQuery.trim())) {
-        setNeighborhoods([...neighborhoods, searchQuery.trim()])
-        setSearchQuery("")
+      if (response.ok) {
+        alert("회원가입이 완료되었습니다!");
+        router.push("/login");
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        const message =
+          errorData.message || "회원가입에 실패했습니다. 다시 시도해주세요.";
+        alert(message);
       }
+    } catch (error) {
+      console.error("Signup error:", error);
+      alert("서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");
     }
-  }
+  };
 
-  const removeNeighborhood = (neighborhood: string) => {
-    setNeighborhoods(neighborhoods.filter((n) => n !== neighborhood))
-  }
+  const removeRegion = (region: string) => {
+    setRegions(regions.filter((n) => n.full !== region));
+  };
+
+  const searchRegion = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/region/search?query=${query}&page=${currentPage}&pageSize=5`
+      );
+
+      const json = await res.json();
+
+      setTotalPage(parseInt(json?.response?.page?.total));
+
+      const items = json?.response?.result?.featureCollection?.features ?? [];
+
+      const formatted: Region[] = items.map((i: any) => ({
+        code: i.properties.emd_cd,
+        full: i.properties.full_nm,
+        small: i.properties.emd_kor_nm,
+      }));
+
+      console.log(formatted);
+
+      setSearchResults(formatted);
+    } catch (e) {
+      console.error(e);
+      setSearchResults([]);
+    }
+  };
+
+  useEffect(() => {
+    searchRegion(searchQuery);
+  }, [currentPage]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -67,8 +127,12 @@ export default function SignupPage() {
           <div className="max-w-md mx-auto">
             <Card>
               <CardHeader className="space-y-1">
-                <CardTitle className="text-2xl font-bold text-center">회원가입</CardTitle>
-                <p className="text-sm text-muted-foreground text-center">OneLife와 함께 시작하세요</p>
+                <CardTitle className="text-2xl font-bold text-center">
+                  회원가입
+                </CardTitle>
+                <p className="text-sm text-muted-foreground text-center">
+                  OneLife와 함께 시작하세요
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -116,7 +180,9 @@ export default function SignupPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">내 동네 설정 (최대 4개)</label>
+                    <label className="text-sm font-medium">
+                      내 동네 설정 (최대 4개)
+                    </label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -124,32 +190,34 @@ export default function SignupPage() {
                           placeholder="동네 이름 검색..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              addNeighborhood()
-                            }
-                          }}
                           className="pl-10"
-                          disabled={neighborhoods.length >= 4}
+                          disabled={regions.length >= 4}
                         />
                       </div>
                       <Button
                         type="button"
-                        onClick={addNeighborhood}
-                        disabled={!searchQuery.trim() || neighborhoods.length >= 4}
+                        onClick={() => {
+                          setCurrentPage(1);
+                          setIsModalOpen(true);
+                          searchRegion(searchQuery);
+                        }}
+                        disabled={regions.length >= 4}
                       >
-                        추가
+                        검색
                       </Button>
                     </div>
-                    {neighborhoods.length > 0 && (
+                    {regions.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {neighborhoods.map((neighborhood) => (
-                          <Badge key={neighborhood} variant="secondary" className="gap-1">
-                            {neighborhood}
+                        {regions.map((region) => (
+                          <Badge
+                            key={region.code}
+                            variant="secondary"
+                            className="gap-1"
+                          >
+                            {region.full}
                             <button
                               type="button"
-                              onClick={() => removeNeighborhood(neighborhood)}
+                              onClick={() => removeRegion(region.full)}
                               className="ml-1 hover:text-destructive"
                             >
                               <X className="h-3 w-3" />
@@ -158,7 +226,9 @@ export default function SignupPage() {
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">동 단위로 입력해주세요 (예: 역삼동, 강남동)</p>
+                    <p className="text-xs text-muted-foreground">
+                      동 단위로 입력해주세요 (예: 역삼동, 강남동)
+                    </p>
                   </div>
 
                   <Button type="submit" className="w-full">
@@ -167,18 +237,127 @@ export default function SignupPage() {
                 </form>
 
                 <div className="text-center text-sm">
-                  <span className="text-muted-foreground">이미 회원이신가요? </span>
-                  <Link href="/login" className="text-primary hover:underline font-medium">
+                  <span className="text-muted-foreground">
+                    이미 회원이신가요?{" "}
+                  </span>
+                  <Link
+                    href="/login"
+                    className="text-primary hover:underline font-medium"
+                  >
                     로그인
                   </Link>
                 </div>
               </CardContent>
             </Card>
+            {isModalOpen && (
+              <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+                <div className="bg-white p-6 rounded-lg shadow-lg w-80">
+                  <h2 className="text-lg font-semibold mb-4">동네 검색</h2>
+
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        placeholder="빛가람동, 역삼동 등..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                        }}
+                      />
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        searchRegion(searchQuery);
+                        setCurrentPage(1);
+                      }}
+                      disabled={regions.length >= 4}
+                    >
+                      검색
+                    </Button>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto mt-3 border rounded">
+                    {searchResults.length === 0 ? (
+                      <p className="text-center text-sm text-gray-500 py-4">
+                        검색 결과가 없습니다.
+                      </p>
+                    ) : (
+                      searchResults.map((item, index) => (
+                        <div
+                          key={index}
+                          onClick={() => setSelectedIndex(index)}
+                          className={`px-3 py-2 cursor-pointer ${
+                            selectedIndex === index
+                              ? "bg-blue-500 text-white"
+                              : "hover:bg-gray-100"
+                          }`}
+                        >
+                          {item.full}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {totalPage > 1 && (
+                    <div className="flex justify-center mt-3 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                      >
+                        이전
+                      </Button>
+
+                      <span className="text-sm flex items-center">
+                        {currentPage} / {totalPage}
+                      </span>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === totalPage}
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                      >
+                        다음
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsModalOpen(false)}
+                    >
+                      취소
+                    </Button>
+
+                    <Button
+                      onClick={() => {
+                        if (selectedIndex !== null) {
+                          const selected = searchResults[selectedIndex];
+                          if (!regions.includes(selected)) {
+                            setRegions([...regions, selected]);
+                          }
+                        }
+                        setIsModalOpen(false);
+                        setSelectedIndex(null);
+                        setSearchResults([]);
+                        setSearchQuery("");
+                      }}
+                      disabled={selectedIndex === null}
+                    >
+                      추가
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
 
       <Footer />
     </div>
-  )
+  );
 }

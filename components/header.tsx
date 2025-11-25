@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/app/global/auth/useAuth";
 
 export function Header() {
   const [hidden, setHidden] = useState(false);
   const lastY = useRef(0);
   const ticking = useRef(false);
+  const { loginMember, isLogin, logoutMember } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     const onScroll = () => {
@@ -38,6 +42,11 @@ export function Header() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const logout = () => {
+    logoutMember();
+    router.push("/"); // 메인으로 이동
+  };
 
   return (
     <header
@@ -96,12 +105,30 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/login">로그인</Link>
-          </Button>
-          <Button size="sm" asChild>
-            <Link href="/signup">회원가입</Link>
-          </Button>
+          {isLogin ? (
+            <>
+              <span className="text-sm font-medium text-muted-foreground">
+                {loginMember?.nickname} 님
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={logout}
+                className="text-red-500 border-red-300 hover:bg-red-50"
+              >
+                로그아웃
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login">로그인</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/signup">회원가입</Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </header>
