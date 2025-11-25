@@ -74,3 +74,35 @@ export async function createRestaurant(payload: {
         throw new Error(txt || '등록 실패');
     }
 }
+
+export async function fetchNearbyRestaurants(params: {
+    lat: number;
+    lng: number;
+    page?: number;
+    size?: number;
+    radiusMeters?: number; // optional if backend supports
+}): Promise<RestaurantListResponse> {
+    const { lat, lng, page = 1, size = 10, radiusMeters } = params;
+    const qs = new URLSearchParams({
+        lat: String(lat),
+        lng: String(lng),
+        page: String(page),
+        size: String(size),
+    });
+    if (radiusMeters) qs.set('radius', String(radiusMeters));
+    const url =
+        `${API_BASE}/api/v1/restaurants/nearby?${qs.toString()}`.replace(
+            /^\//,
+            ''
+        );
+    const res = await fetch(
+        url.startsWith('http')
+            ? url
+            : `/api/v1/restaurants/nearby?${qs.toString()}`,
+        { cache: 'no-store' }
+    );
+    if (!res.ok) {
+        throw new Error(`Failed to fetch nearby restaurants: ${res.status}`);
+    }
+    return res.json();
+}

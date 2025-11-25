@@ -10,7 +10,7 @@ import RestaurantsList from './_components/RestaurantsList';
 import Pagination from './_components/Pagination';
 import MapPanel from './_components/MapPanel';
 import type { Restaurant } from '@/lib/restaurants';
-import { fetchRestaurants } from '@/lib/restaurants';
+import { fetchRestaurants, fetchNearbyRestaurants } from '@/lib/restaurants';
 
 export default function RestaurantsPage() {
     const [activeTab] = useState<'list' | 'map'>('map');
@@ -35,6 +35,10 @@ export default function RestaurantsPage() {
     const [page, setPage] = useState(1);
     const size = 10;
     const [keyword, setKeyword] = useState('');
+    const [isNearby, setIsNearby] = useState(false);
+    const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(
+        null
+    );
     const [lastClicked, setLastClicked] = useState<{
         lat: number;
         lng: number;
@@ -52,6 +56,45 @@ export default function RestaurantsPage() {
             }));
             return current ? [current, ...list] : list;
         });
+    };
+
+    const loadNearbyRestaurants = async (
+        p = page,
+        pos?: { lat: number; lng: number }
+    ) => {
+        const target = pos || userPos;
+        if (!target) return;
+        try {
+            const json = await fetchNearbyRestaurants({
+                lat: target.lat,
+                lng: target.lng,
+                page: p,
+                size,
+            });
+            setRestaurants(json.data);
+            setTotal(json.totalElements);
+            setMapMarkers((prev) => {
+                // Always keep '내 위치' marker first
+                const filtered = prev.filter((m) => m.title !== '내 위치');
+                const list = (json.data as Restaurant[]).map((r) => ({
+                    lat: r.lat,
+                    lng: r.lng,
+                    title: r.name,
+                }));
+                return [
+                    {
+                        lat: target.lat,
+                        lng: target.lng,
+                        title: '내 위치',
+                        variant: 'current',
+                    },
+                    ...list,
+                ];
+            });
+        } catch (e) {
+            console.error('nearby fetch error', e);
+            window.alert('내 주변 식당을 불러오지 못했습니다.');
+        }
     };
 
     useEffect(() => {
@@ -72,9 +115,16 @@ export default function RestaurantsPage() {
                     <div className="p-4 border-b">
                         <SearchBar
                             keyword={keyword}
-                            onKeywordChange={setKeyword}
+                            onKeywordChange={(v) => {
+                                setKeyword(v);
+                                if (isNearby) {
+                                    // 검색어 입력 시 주변 모드 해제
+                                    setIsNearby(false);
+                                }
+                            }}
                             onSearch={() => {
                                 setPage(1);
+                                setIsNearby(false);
                                 loadRestaurants(keyword, 1);
                             }}
                         />
@@ -99,21 +149,13 @@ export default function RestaurantsPage() {
                                 />
                                 <CurrentLocationButton
                                     onLocated={({ lat, lng }) => {
-                                        setMapCenter({ lat, lng });
-                                        setMapMarkers((prev) => {
-                                            const filtered = prev.filter(
-                                                (p) => p.title !== '내 위치'
-                                            );
-                                            return [
-                                                {
-                                                    lat,
-                                                    lng,
-                                                    title: '내 위치',
-                                                    variant: 'current',
-                                                },
-                                                ...filtered,
-                                            ];
-                                        });
+                                        const newPos = { lat, lng };
+                                        setUserPos(newPos);
+                                        setMapCenter(newPos);
+                                        setIsNearby(true);
+                                        setPage(1);
+                                        // 주변 식당 호출 후 마커 구성 (함수 내부에서 '내 위치' 포함)
+                                        loadNearbyRestaurants(1, newPos);
                                     }}
                                 />
                             </div>
@@ -129,12 +171,20 @@ export default function RestaurantsPage() {
                         onPrev={() => {
                             const np = Math.max(1, page - 1);
                             setPage(np);
-                            loadRestaurants(keyword, np);
+                            if (isNearby) {
+                                loadNearbyRestaurants(np);
+                            } else {
+                                loadRestaurants(keyword, np);
+                            }
                         }}
                         onNext={() => {
                             const np = page + 1;
                             setPage(np);
-                            loadRestaurants(keyword, np);
+                            if (isNearby) {
+                                loadNearbyRestaurants(np);
+                            } else {
+                                loadRestaurants(keyword, np);
+                            }
                         }}
                     />
                 </div>
