@@ -32,22 +32,18 @@ export default function RestaurantDetailDialog({
     const { loginMember, isLogin } = useAuth();
     const [loading, setLoading] = useState(false);
 
-    // Avoid returning early before hooks are declared — keep hooks order stable.
     const ownerId =
         (restaurant as any)?.ownerId ?? (restaurant as any)?.memberId ?? null;
     const isOwner =
         isLogin && ownerId && loginMember && loginMember.id === ownerId;
     const isUserCreated = Boolean(ownerId);
 
-    // --- Solo-dining vote state (localStorage-backed optimistic UI) ---
-    // backend not defined; use restaurant fields if available or fallback to 0
     const initialYes = (restaurant as any)?.soloYesCount ?? 0;
     const initialNo = (restaurant as any)?.soloNoCount ?? 0;
     const [soloYes, setSoloYes] = useState<number>(initialYes);
     const [soloNo, setSoloNo] = useState<number>(initialNo);
     const [userSoloVote, setUserSoloVote] = useState<'yes' | 'no' | null>(null);
 
-    // Read saved vote from localStorage on mount (client-only)
     useEffect(() => {
         try {
             if (!restaurant) return;
@@ -55,7 +51,7 @@ export default function RestaurantDetailDialog({
             const v = localStorage.getItem(key);
             if (v === 'yes' || v === 'no') setUserSoloVote(v);
         } catch (e) {
-            // ignore
+            console.error('load solo vote', e);
         }
     }, [restaurant]);
 
@@ -65,7 +61,7 @@ export default function RestaurantDetailDialog({
             if (vote === null) localStorage.removeItem(key);
             else localStorage.setItem(key, vote);
         } catch (e) {
-            // ignore
+            console.error('set solo vote', e);
         }
     };
 
@@ -82,26 +78,20 @@ export default function RestaurantDetailDialog({
             return;
         }
 
-        // optimistic local update
         const prev = userSoloVote;
         if (prev === vote) {
-            // undo
             if (vote === 'yes') setSoloYes((s) => Math.max(0, s - 1));
             else setSoloNo((s) => Math.max(0, s - 1));
             setUserSoloVote(null);
             setLocalVote(null);
             return;
         }
-
-        // switch or new vote
         if (vote === 'yes') setSoloYes((s) => s + 1);
         else setSoloNo((s) => s + 1);
         if (prev === 'yes') setSoloYes((s) => Math.max(0, s - 1));
         if (prev === 'no') setSoloNo((s) => Math.max(0, s - 1));
         setUserSoloVote(vote);
         setLocalVote(vote);
-
-        // TODO: call backend endpoint to persist vote when available
     };
 
     const handleDelete = async () => {
@@ -137,7 +127,6 @@ export default function RestaurantDetailDialog({
         }
     };
 
-    // If restaurant is not provided, render nothing. Hooks must run before this check.
     if (!restaurant) return null;
 
     return (
@@ -257,7 +246,6 @@ export default function RestaurantDetailDialog({
                             className="cursor-pointer"
                             variant="outline"
                             onClick={() => {
-                                // Explicit Kakao detail action: open placeUrl in new tab
                                 try {
                                     const url = (restaurant as any).placeUrl;
                                     if (url) {
@@ -287,7 +275,6 @@ export default function RestaurantDetailDialog({
                             className="cursor-pointer"
                             variant="outline"
                             onClick={() => {
-                                // Navigate to local detail page (in-app)
                                 if (restaurant && (restaurant as any).id) {
                                     router.push(
                                         `/restaurants/${(restaurant as any).id}`

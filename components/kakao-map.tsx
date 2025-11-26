@@ -77,8 +77,6 @@ export default function KakaoMap({
                 );
             } else {
                 try {
-                    // Only change zoom level if it's different from the current map level.
-                    // This preserves user-controlled zoom when parent changes `center`.
                     try {
                         if (typeof level === 'number') {
                             if (
@@ -95,14 +93,11 @@ export default function KakaoMap({
                         }
                     } catch {}
 
-                    // smooth pan if supported
                     if (typeof (mapRef.current as any).panTo === 'function')
                         (mapRef.current as any).panTo(mapCenter);
                     else mapRef.current.setCenter(mapCenter);
                 } catch {}
             }
-
-            // remove previous click listener if any
             try {
                 if (clickListenerRef.current && mapRef.current) {
                     window.kakao.maps.event.removeListener(
@@ -113,8 +108,6 @@ export default function KakaoMap({
                     clickListenerRef.current = null;
                 }
             } catch {}
-
-            // attach map click listener to report coordinates and optionally show debug marker
             try {
                 if (
                     (typeof onMapClick === 'function' || enableClickDebug) &&
@@ -191,7 +184,6 @@ export default function KakaoMap({
 
             if (Array.isArray(markers) && markers.length && mapRef.current) {
                 const overlayMap: Record<string, any> = overlayMapRef.current;
-                // build set of positions where a 'current' variant exists to avoid duplicate markers
                 const currentPosSet = new Set<string>();
                 markers.forEach((m) => {
                     if (m.variant === 'current') {
@@ -253,8 +245,6 @@ export default function KakaoMap({
                             'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
                         );
                     };
-
-                    // enlarge marker and hover sizes to improve hover target area
                     const normalSize = 36;
                     const hoverSize = 48;
                     const normalUrl = makeSvgUrl('#1E90FF', normalSize);
@@ -273,7 +263,6 @@ export default function KakaoMap({
                         clickable: true,
                         image: normalImg,
                     });
-                    // skip creating a normal marker if there's already a 'current' marker at the same coords
                     const posKey = `${Number(m.lat).toFixed(6)}|${Number(
                         m.lng
                     ).toFixed(6)}`;
@@ -287,7 +276,6 @@ export default function KakaoMap({
                             hoverImg,
                         });
                     } else {
-                        // when skipping, still push a minimal record so cleanup can remove overlays if any
                         markersRef.current.push({ id: m.id });
                     }
 
@@ -312,7 +300,6 @@ export default function KakaoMap({
                             delete overlayMap[key];
                         }
                     };
-                    // only attach listeners if marker was added to the map
                     if (markerAdded) {
                         window.kakao.maps.event.addListener(
                             marker,
@@ -324,7 +311,6 @@ export default function KakaoMap({
                             'mouseout',
                             onOut
                         );
-                        // click: notify parent and center map smoothly
                         window.kakao.maps.event.addListener(
                             marker,
                             'click',
@@ -362,11 +348,9 @@ export default function KakaoMap({
         enableClickDebug,
     ]);
 
-    // manage selected overlay when highlightId changes
     useEffect(() => {
         if (!sdkLoaded || !mapRef.current) return;
         try {
-            // clear previous selected overlay and restore marker image
             if (selectedOverlayRef.current) {
                 try {
                     selectedOverlayRef.current.setMap(null);
@@ -374,7 +358,6 @@ export default function KakaoMap({
                 selectedOverlayRef.current = null;
             }
             if (selectedIdRef.current != null) {
-                // restore previous marker image
                 const prev = markersRef.current.find(
                     (e) => String(e.id) === String(selectedIdRef.current)
                 );
@@ -383,7 +366,6 @@ export default function KakaoMap({
                         prev.marker.setImage(prev.normalImg);
                     } catch {}
                 }
-                // also remove hover overlay if left behind
                 const prevKey = String(selectedIdRef.current);
                 if (overlayMapRef.current[prevKey]) {
                     try {
@@ -396,7 +378,6 @@ export default function KakaoMap({
 
             if (!highlightId) return;
 
-            // find marker entry
             const entry = markersRef.current.find(
                 (e) => String(e.id) === String(highlightId)
             );
@@ -405,7 +386,6 @@ export default function KakaoMap({
                 try {
                     entry.marker.setImage(entry.hoverImg);
                 } catch {}
-                // create selected overlay
                 const pos = entry.marker.getPosition
                     ? entry.marker.getPosition()
                     : new window.kakao.maps.LatLng(entry.lat, entry.lng);
@@ -425,14 +405,12 @@ export default function KakaoMap({
                         content: el,
                     });
                 selectedOverlayRef.current.setMap(mapRef.current);
-                // ensure map centers smoothly
                 try {
                     if (typeof (mapRef.current as any).panTo === 'function')
                         (mapRef.current as any).panTo(pos);
                     else mapRef.current.setCenter(pos);
                 } catch {}
             } else if (entry && entry.overlay) {
-                // if only overlay exists (current location), center to it
                 try {
                     const pos = entry.overlay.getPosition();
                     if (typeof (mapRef.current as any).panTo === 'function')
