@@ -22,7 +22,7 @@ export default async function PostDetailPage({
 }: {
   params: { id: string };
 }) {
-  const { id } = await params; // await로 풀어서 id 사용
+  const { id } = await params;
   const post = await getPostDetail(id);
 
   if (!post) {

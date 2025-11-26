@@ -18,8 +18,10 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { ImagePlus, X } from "lucide-react";
+import { createPost } from "@/app/api/post/postwriteapi";
 
 export default function WritePostPage() {
+  const isAdmin = true; // 임시로 정보게시판에 사용 할 관리자 권한 부여
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("꿀팁");
@@ -48,21 +50,38 @@ export default function WritePostPage() {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For now just log the data; later this will POST to backend
-    console.log({
-      title,
-      category,
-      tags: tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      content,
-      images,
-    });
-    // Redirect back to onelife listing
-    router.push("/onelife");
+
+    try {
+      const dto = {
+        title,
+        content,
+        attachmentPath: images[0] || "",
+        postType:
+          category === "꿀팁"
+            ? "TIP"
+            : category === "자유"
+            ? "FREE"
+            : category === "정보"
+            ? "INFO"
+            : "ALL",
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      };
+      await createPost(dto);
+
+      router.push("/onelife");
+    } catch (err) {
+      console.error(err);
+      alert("게시글 작성 중 오류가 발생했습니다.");
+      console.log(
+        "📡 POST 요청 URL:",
+        process.env.NEXT_PUBLIC_API_URL + "/api/v1/posts/onelife"
+      );
+    }
   };
 
   return (
@@ -100,6 +119,9 @@ export default function WritePostPage() {
                       <SelectContent>
                         <SelectItem value="꿀팁">꿀팁</SelectItem>
                         <SelectItem value="자유">자유</SelectItem>
+                        {isAdmin && (
+                          <SelectItem value="정보">정보 게시판</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
