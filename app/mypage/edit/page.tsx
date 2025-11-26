@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Camera, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { X, Search } from "lucide-react";
@@ -29,6 +29,7 @@ interface FormData {
   regions: Location[];
   introduction: string;
   email: string;
+  profileImage: File | null;
 }
 
 export default function ProfileEditPage() {
@@ -53,6 +54,9 @@ export default function ProfileEditPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPage, setTotalPage] = useState(0);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,15 +75,29 @@ export default function ProfileEditPage() {
       return;
     }
 
+    const fd = new FormData();
+
+    fd.append(
+      "request",
+      JSON.stringify({
+        nickname: formData?.nickname,
+        email: formData?.email,
+        introduction: formData?.introduction,
+        regions: formData?.regions,
+      })
+    );
+
+    if (formData?.profileImage) {
+      fd.append("profileImage", formData.profileImage);
+    }
+
     try {
       const response = await fetch(
         `${baseUrl}/api/v1/members/${loginMember?.id}`,
         {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
+          body: fd,
+          credentials: "include",
         }
       );
 
@@ -235,38 +253,59 @@ export default function ProfileEditPage() {
     const { name, value } = e.target;
 
     setFormData((prev) => {
-      if (!prev)
+      const base = prev ?? {
+        nickname: "",
+        regions: [{ code: "", full: "", small: "" }],
+        introduction: "",
+        email: "",
+        profileImage: null,
+      };
+
+      // nickname / email / introduction
+      if (["nickname", "email", "introduction"].includes(name)) {
         return {
-          nickname: "",
-          regions: [{ code: "", full: "", small: "" }],
-          introduction: "",
-          email: "",
+          ...base,
+          [name]: value,
+        };
+      }
+
+      // 지역 정보 업데이트
+      if (name === "location") {
+        const newRegions = [...base.regions];
+
+        newRegions[0] = {
+          ...newRegions[0],
+          full: value,
         };
 
-      if (
-        name === "nickname" ||
-        name === "email" ||
-        name === "introduction" ||
-        name === "bio"
-      ) {
         return {
-          ...prev,
-          introduction: name === "bio" ? value : prev.introduction,
-          [name === "bio" ? "introduction" : name]: value,
-        } as FormData;
+          ...base,
+          regions: newRegions,
+        };
       }
 
-      if (name === "location") {
-        const newRegions = [...prev.regions];
-        if (newRegions.length === 0)
-          newRegions.push({ code: "", full: value, small: "" });
-        else newRegions[0] = { ...newRegions[0], full: value };
-
-        return { ...prev, regions: newRegions } as FormData;
-      }
-
-      return prev;
+      return base;
     });
+  };
+
+  // 파일 선택 처리
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const imageURL = URL.createObjectURL(file);
+    setPreview(imageURL);
+
+    // formData에 파일 저장 (서버로 보낼 때 사용)
+    setFormData((prev: any) => ({
+      ...prev,
+      profileImage: file,
+    }));
+  };
+
+  // 버튼 클릭 → 파일 선택창 오픈
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -307,19 +346,35 @@ export default function ProfileEditPage() {
                     <div className="flex flex-col items-center gap-4 pb-6 border-b">
                       <div className="relative">
                         <Avatar className="h-32 w-32">
-                          <AvatarFallback className="text-4xl">
-                            {formData?.nickname[0]}
-                          </AvatarFallback>
+                          {preview ? (
+                            <AvatarImage src={preview} />
+                          ) : (
+                            <AvatarFallback className="text-4xl">
+                              {formData?.nickname?.[0]}
+                            </AvatarFallback>
+                          )}
                         </Avatar>
+
                         <Button
                           type="button"
                           size="icon"
                           variant="secondary"
                           className="absolute bottom-0 right-0 rounded-full h-10 w-10"
+                          onClick={openFileDialog}
                         >
                           <Camera className="h-5 w-5" />
                         </Button>
+
+                        {/* 숨겨진 파일 input */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleFileChange}
+                        />
                       </div>
+
                       <p className="text-sm text-muted-foreground">
                         프로필 사진을 변경하려면 클릭하세요
                       </p>
@@ -628,6 +683,7 @@ export default function ProfileEditPage() {
                                     introduction: "",
                                     email: "",
                                     regions: [selected],
+                                    profileImage: null,
                                   };
                                 }
 
