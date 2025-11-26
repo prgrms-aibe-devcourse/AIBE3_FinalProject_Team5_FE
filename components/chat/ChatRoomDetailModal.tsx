@@ -21,23 +21,16 @@ export default function ChatRoomDetailModal({
   onClose,
 }: ChatRoomDetailModalProps) {
   const router = useRouter();
-  const { isLogin, loginMember, apiKey, accessToken } = useAuth();
+  const { isLogin, loginMember } = useAuth();
   const [isJoining, setIsJoining] = useState(false);
 
   const isFull = chatRoom.currentParticipants >= chatRoom.maxParticipants;
   const isCreator = loginMember?.id === chatRoom.creatorId;
 
+  // 쿠키 기반 - 채팅방 참여
   const handleJoin = async () => {
-    // 강력한 로그인 체크
-    const hasAuth = !!(
-      isLogin &&
-      loginMember &&
-      loginMember.id &&
-      apiKey &&
-      accessToken
-    );
-
-    if (!hasAuth) {
+    // 로그인 체크
+    if (!isLogin || !loginMember) {
       alert("로그인이 필요한 기능입니다.");
       onClose();
       router.push("/login");
@@ -58,7 +51,8 @@ export default function ChatRoomDetailModal({
         chatRoomId: chatRoom.id,
       });
 
-      await joinChatRoom(chatRoom.id, apiKey, accessToken);
+      // 쿠키 기반 - 파라미터 간소화
+      await joinChatRoom(chatRoom.id);
 
       console.log("✅ [참여하기] API 성공 - 새로 참여");
       alert("소모임에 참여했습니다!");

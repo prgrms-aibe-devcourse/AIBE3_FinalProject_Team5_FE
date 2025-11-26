@@ -15,7 +15,7 @@ import { Plus } from "lucide-react";
 
 export default function ChatPage() {
   const router = useRouter();
-  const { isLogin, apiKey, accessToken } = useAuth();
+  const { isLogin } = useAuth();
 
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,16 +26,12 @@ export default function ChatPage() {
     loadChatRooms();
   }, []);
 
+  // 채팅방 목록 로드 - 쿠키 기반
   const loadChatRooms = async () => {
     try {
       setIsLoading(true);
-      // 비회원도 목록 조회 가능 (apiKey, accessToken은 선택)
-      const rooms = await fetchChatRooms(
-        undefined,
-        undefined,
-        apiKey,
-        accessToken
-      );
+      // 비회원도 목록 조회 가능 (쿠키 자동 포함)
+      const rooms = await fetchChatRooms();
       setChatRooms(rooms);
     } catch (error) {
       console.error("채팅방 목록 로드 실패:", error);

@@ -21,7 +21,7 @@ export default function CreateChatRoomModal({
   onSuccess,
 }: CreateChatRoomModalProps) {
   const router = useRouter();
-  const { apiKey, accessToken } = useAuth();
+  const { isLogin } = useAuth();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -29,10 +29,11 @@ export default function CreateChatRoomModal({
   const [maxParticipants, setMaxParticipants] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 쿠키 기반 - 채팅방 생성
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!apiKey || !accessToken) {
+    if (!isLogin) {
       alert("로그인이 필요합니다.");
       return;
     }
@@ -40,17 +41,14 @@ export default function CreateChatRoomModal({
     try {
       setIsLoading(true);
 
-      await createChatRoom(
-        {
-          name,
-          description,
-          region,
-          maxParticipants,
-          type: ChatRoomType.SMALL_GROUP,
-        },
-        apiKey,
-        accessToken
-      );
+      // 쿠키 기반 - 파라미터 간소화
+      await createChatRoom({
+        name,
+        description,
+        region,
+        maxParticipants,
+        type: ChatRoomType.SMALL_GROUP,
+      });
 
       alert("소모임이 생성되었습니다!");
 

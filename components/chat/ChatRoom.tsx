@@ -23,7 +23,7 @@ interface ChatRoomProps {
 
 export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
   const router = useRouter();
-  const { loginMember, apiKey, accessToken } = useAuth();
+  const { loginMember } = useAuth();
   const wsClient = useRef<ChatWebSocketClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -38,7 +38,7 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
 
   useEffect(() => {
     // 로그인 체크
-    if (!loginMember || !apiKey || !accessToken) {
+    if (!loginMember) {
       alert("로그인이 필요합니다.");
       router.push("/login");
       return;
@@ -51,23 +51,17 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
         wsClient.current.disconnect();
       }
     };
-  }, [chatRoomId, loginMember, apiKey, accessToken]);
+  }, [chatRoomId, loginMember]);
 
+  // 쿠키 기반 - 채팅방 데이터 로드
   const loadChatRoomData = async () => {
-    if (!apiKey || !accessToken) return;
-
     try {
       // 채팅방 정보 조회
-      const room = await fetchChatRoom(chatRoomId, apiKey, accessToken);
+      const room = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(room);
 
       // 이전 메시지 조회
-      const previousMessages = await fetchChatMessages(
-        chatRoomId,
-        apiKey,
-        accessToken
-      );
-
+      const previousMessages = await fetchChatMessages(chatRoomId);
       setMessages(previousMessages);
 
       // WebSocket 연결
@@ -110,11 +104,10 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
     );
   };
 
+  // 쿠키 기반 - 채팅방 정보 업데이트
   const updateChatRoomInfo = async () => {
-    if (!apiKey || !accessToken) return;
-
     try {
-      const updatedRoom = await fetchChatRoom(chatRoomId, apiKey, accessToken);
+      const updatedRoom = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(updatedRoom);
       console.log("✅ 채팅방 정보 업데이트:", updatedRoom);
     } catch (error) {
@@ -135,13 +128,9 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
     });
   };
 
+  // 쿠키 기반 - 채팅방 나가기
   const handleLeaveChatRoom = async () => {
     if (!confirm("채팅방을 나가시겠습니까?")) return;
-
-    if (!apiKey || !accessToken) {
-      alert("로그인이 필요합니다.");
-      return;
-    }
 
     try {
       console.log("채팅방 나가기 시작...");
@@ -151,8 +140,8 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
         wsClient.current.disconnect();
       }
 
-      // 2. 채팅방 나가기 API 호출
-      await leaveChatRoom(chatRoomId, apiKey, accessToken);
+      // 2. 채팅방 나가기 API 호출 (쿠키 기반)
+      await leaveChatRoom(chatRoomId);
 
       // 3. 상태 초기화
       clearMessages();

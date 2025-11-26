@@ -4,18 +4,22 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 /**
- * 인증 헤더 생성
+ * 공통 fetch 옵션 (쿠키 기반 인증)
  */
-function getAuthHeaders(apiKey?: string | null, accessToken?: string | null) {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+function getFetchOptions(method: string = "GET", body?: any): RequestInit {
+  const options: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
   };
 
-  if (apiKey && accessToken) {
-    headers["Authorization"] = `Bearer ${apiKey} ${accessToken}`;
+  if (body) {
+    options.body = JSON.stringify(body);
   }
 
-  return headers;
+  return options;
 }
 
 /**
@@ -55,9 +59,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
  */
 export async function fetchChatRooms(
   region?: string,
-  type?: string,
-  apiKey?: string | null,
-  accessToken?: string | null
+  type?: string
 ): Promise<ChatRoom[]> {
   const params = new URLSearchParams();
   if (region) params.append("region", region);
@@ -67,25 +69,20 @@ export async function fetchChatRooms(
     ? `${API_BASE_URL}/chatrooms?${params}`
     : `${API_BASE_URL}/chatrooms`;
 
-  const response = await fetch(url, {
-    headers: getAuthHeaders(apiKey, accessToken),
-  });
+  const response = await fetch(url, getFetchOptions());
 
   const data = await handleResponse<{ chatRooms: ChatRoom[] }>(response);
   return data.chatRooms || [];
 }
 
 /**
- * 채팅방 상세 조회 (로그인 필수)
+ * 채팅방 상세 조회
  */
-export async function fetchChatRoom(
-  chatRoomId: number,
-  apiKey: string,
-  accessToken: string
-): Promise<ChatRoom> {
-  const response = await fetch(`${API_BASE_URL}/chatrooms/${chatRoomId}`, {
-    headers: getAuthHeaders(apiKey, accessToken),
-  });
+export async function fetchChatRoom(chatRoomId: number): Promise<ChatRoom> {
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms/${chatRoomId}`,
+    getFetchOptions()
+  );
 
   return handleResponse<ChatRoom>(response);
 }
@@ -94,15 +91,12 @@ export async function fetchChatRoom(
  * 채팅방 생성 (로그인 필수)
  */
 export async function createChatRoom(
-  data: ChatRoomCreateRequest,
-  apiKey: string,
-  accessToken: string
+  data: ChatRoomCreateRequest
 ): Promise<ChatRoom> {
-  const response = await fetch(`${API_BASE_URL}/chatrooms`, {
-    method: "POST",
-    headers: getAuthHeaders(apiKey, accessToken),
-    body: JSON.stringify(data),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms`,
+    getFetchOptions("POST", data)
+  );
 
   return handleResponse<ChatRoom>(response);
 }
@@ -110,15 +104,11 @@ export async function createChatRoom(
 /**
  * 채팅방 참여 (로그인 필수)
  */
-export async function joinChatRoom(
-  chatRoomId: number,
-  apiKey: string,
-  accessToken: string
-): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/chatrooms/${chatRoomId}/join`, {
-    method: "POST",
-    headers: getAuthHeaders(apiKey, accessToken),
-  });
+export async function joinChatRoom(chatRoomId: number): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms/${chatRoomId}/join`,
+    getFetchOptions("POST")
+  );
 
   await handleResponse<void>(response);
 }
@@ -126,17 +116,10 @@ export async function joinChatRoom(
 /**
  * 채팅방 나가기 (로그인 필수)
  */
-export async function leaveChatRoom(
-  chatRoomId: number,
-  apiKey: string,
-  accessToken: string
-): Promise<void> {
+export async function leaveChatRoom(chatRoomId: number): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/chatrooms/${chatRoomId}/leave`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(apiKey, accessToken),
-    }
+    getFetchOptions("POST")
   );
 
   await handleResponse<void>(response);
@@ -147,15 +130,11 @@ export async function leaveChatRoom(
  */
 export async function fetchChatMessages(
   chatRoomId: number,
-  apiKey: string,
-  accessToken: string,
   count: number = 50
 ): Promise<ChatMessage[]> {
   const response = await fetch(
     `${API_BASE_URL}/chatrooms/${chatRoomId}/messages/recent?count=${count}`,
-    {
-      headers: getAuthHeaders(apiKey, accessToken),
-    }
+    getFetchOptions()
   );
 
   const data = await handleResponse<
@@ -178,13 +157,11 @@ export async function fetchChatMessages(
 /**
  * 내가 참여한 채팅방 목록 (로그인 필수)
  */
-export async function fetchMyChatRooms(
-  apiKey: string,
-  accessToken: string
-): Promise<ChatRoom[]> {
-  const response = await fetch(`${API_BASE_URL}/chatrooms/my`, {
-    headers: getAuthHeaders(apiKey, accessToken),
-  });
+export async function fetchMyChatRooms(): Promise<ChatRoom[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms/my`,
+    getFetchOptions()
+  );
 
   const data = await handleResponse<{ chatRooms: ChatRoom[] }>(response);
   return data.chatRooms || [];
@@ -201,15 +178,11 @@ export interface ChatParticipant {
 }
 
 export async function fetchChatParticipants(
-  chatRoomId: number,
-  apiKey: string,
-  accessToken: string
+  chatRoomId: number
 ): Promise<ChatParticipant[]> {
   const response = await fetch(
     `${API_BASE_URL}/chatrooms/${chatRoomId}/participants`,
-    {
-      headers: getAuthHeaders(apiKey, accessToken),
-    }
+    getFetchOptions()
   );
 
   const data = await handleResponse<

@@ -40,7 +40,7 @@ export default function GroupChatPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { isLogin, loginMember, apiKey, accessToken } = useAuth();
+  const { isLogin, loginMember } = useAuth();
   const wsClient = useRef<ChatWebSocketClient | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -99,37 +99,31 @@ export default function GroupChatPage({
     }
   }, [messages]);
 
+  // 쿠키 기반 - 채팅방 데이터 로드
   const loadChatRoomData = async () => {
-    if (!apiKey || !accessToken) {
-      console.error("인증 정보 없음");
-      return;
-    }
-
     try {
+      console.log("📡 채팅방 데이터 로드 시작:", chatRoomId);
+
       // 1. 채팅방 정보 조회
-      const room = await fetchChatRoom(chatRoomId, apiKey, accessToken);
+      const room = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(room);
+      console.log("채팅방 정보:", room);
 
       // 2. 이전 메시지 불러오기
-      const previousMessages = await fetchChatMessages(
-        chatRoomId,
-        apiKey,
-        accessToken
-      );
-      setMessages(previousMessages);
+      const previousMessages = await fetchChatMessages(chatRoomId);
+      console.log("이전 메시지:", previousMessages.length, "개");
+
+      // clearMessages 후 새로운 메시지 설정
+      clearMessages();
+      previousMessages.forEach((msg) => addMessage(msg));
 
       // 3. 참여자 목록 불러오기
       try {
-        const participantsList = await fetchChatParticipants(
-          chatRoomId,
-          apiKey,
-          accessToken
-        );
+        const participantsList = await fetchChatParticipants(chatRoomId);
         setParticipants(participantsList);
         console.log("참여자 목록 로드:", participantsList);
       } catch (error) {
         console.error("참여자 목록 로드 실패:", error);
-        // 참여자 목록 로드 실패해도 계속 진행
       }
 
       // 4. WebSocket 연결
@@ -163,27 +157,25 @@ export default function GroupChatPage({
         if (msg.type === MessageType.ENTER || msg.type === MessageType.LEAVE) {
           console.log("참여자 변동 감지 - 목록 갱신 중...");
 
-          if (apiKey && accessToken) {
-            // 1. 참여자 목록 갱신
-            fetchChatParticipants(chatRoomId, apiKey, accessToken)
-              .then((list) => {
-                setParticipants(list);
-                console.log("✅ 참여자 목록 갱신 완료:", list);
-              })
-              .catch((error) =>
-                console.error("❌ 참여자 목록 갱신 실패:", error)
-              );
+          // 쿠키 기반 - 참여자 목록 갱신
+          fetchChatParticipants(chatRoomId)
+            .then((list) => {
+              setParticipants(list);
+              console.log("✅ 참여자 목록 갱신 완료:", list);
+            })
+            .catch((error) =>
+              console.error("❌ 참여자 목록 갱신 실패:", error)
+            );
 
-            // 2. 채팅방 정보 갱신 (currentParticipants 업데이트)
-            fetchChatRoom(chatRoomId, apiKey, accessToken)
-              .then((updatedRoom) => {
-                setCurrentChatRoom(updatedRoom);
-                console.log("✅ 채팅방 정보 갱신 완료:", updatedRoom);
-              })
-              .catch((error) =>
-                console.error("❌ 채팅방 정보 갱신 실패:", error)
-              );
-          }
+          // 쿠키 기반 - 채팅방 정보 갱신
+          fetchChatRoom(chatRoomId)
+            .then((updatedRoom) => {
+              setCurrentChatRoom(updatedRoom);
+              console.log("✅ 채팅방 정보 갱신 완료:", updatedRoom);
+            })
+            .catch((error) =>
+              console.error("❌ 채팅방 정보 갱신 실패:", error)
+            );
         }
       },
       () => {
@@ -214,13 +206,13 @@ export default function GroupChatPage({
     setMessage("");
   };
 
+  // 쿠키 기반 - 나가기
   const handleLeave = async () => {
-    if (!apiKey || !accessToken || !currentChatRoom) return;
+    if (!currentChatRoom) return;
 
     const isCreator = loginMember?.id === currentChatRoom.creatorId;
     const hasOtherParticipants = currentChatRoom.currentParticipants > 1;
 
-    // 방장 여부에 따라 다른 확인 메시지
     let confirmMessage = "소모임을 나가시겠습니까?";
 
     if (isCreator && hasOtherParticipants) {
@@ -242,8 +234,8 @@ export default function GroupChatPage({
         console.log("✅ WebSocket 연결 해제");
       }
 
-      // 2. 백엔드 API 호출 (방장 권한 이양은 백엔드에서 자동 처리)
-      await leaveChatRoom(chatRoomId, apiKey, accessToken);
+      // 2. 백엔드 API 호출 (쿠키 기반)
+      await leaveChatRoom(chatRoomId);
       console.log("✅ 백엔드 퇴장 처리 완료");
 
       // 3. 상태 초기화
@@ -257,7 +249,6 @@ export default function GroupChatPage({
     } catch (error: any) {
       console.error("❌ 나가기 실패:", error);
 
-      // 채팅방이 이미 삭제된 경우
       if (error.message?.includes("존재하지 않는") || error.status === 404) {
         console.log("ℹ️ 채팅방이 이미 삭제되었습니다.");
         clearMessages();
@@ -270,19 +261,19 @@ export default function GroupChatPage({
     }
   };
 
-  if (!isLogin || !loginMember) {
-    return null;
-  }
-
-  if (!currentChatRoom) {
+  if (!currentChatRoom || !loginMember) {
     return (
-      <>
+      <div className="min-h-screen bg-background">
         <Header />
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
+        <main className="container mx-auto py-8">
+          <div className="flex justify-center items-center h-[60vh]">
+            <p className="text-muted-foreground">
+              채팅방 정보를 불러오는 중...
+            </p>
+          </div>
+        </main>
         <Footer />
-      </>
+      </div>
     );
   }
 
@@ -292,318 +283,296 @@ export default function GroupChatPage({
 
       <main className="flex-1 py-4 md:py-8">
         <div className="container mx-auto px-4">
-          <div className="max-w-6xl mx-auto">
-            {/* Back Button */}
-            <Link
-              href="/groups"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              소모임 목록으로 돌아가기
-            </Link>
+          {/* Back Button */}
+          <Link
+            href="/groups"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            소모임 목록으로 돌아가기
+          </Link>
 
-            {/* 채팅 영역 */}
-            <div className="grid lg:grid-cols-4 gap-4">
-              {/* Chat Area */}
-              <div className="lg:col-span-3">
-                {/* Card 높이 */}
-                <Card className="flex flex-col h-[calc(100vh-250px)]">
-                  {/* Chat Header - 고정 */}
-                  <CardHeader className="border-b shrink-0">
-                    <div className="flex items-center justify-between">
+          {/* 채팅 영역 */}
+          <div className="grid lg:grid-cols-4 gap-4">
+            {/* Chat Area */}
+            <div className="lg:col-span-3">
+              <Card className="flex flex-col h-[calc(100vh-250px)]">
+                {/* Header */}
+                <CardHeader className="border-b shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {currentChatRoom.name}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {currentChatRoom.description || "연결됨"}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="icon">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                {/* Messages */}
+                <CardContent
+                  ref={messagesContainerRef}
+                  className="flex-1 overflow-y-auto p-4 space-y-4"
+                >
+                  {/* 환영 메시지 */}
+                  <div className="flex justify-center items-center py-8">
+                    <div className="text-center space-y-3">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
+                        <svg
+                          className="w-8 h-8 text-primary"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
+                          />
+                        </svg>
+                      </div>
                       <div>
-                        <h2 className="text-xl font-bold">
-                          {currentChatRoom.name}
-                        </h2>
+                        <p className="text-xl font-bold text-foreground mb-1">
+                          소모임 채팅방에 입장하셨습니다
+                        </p>
                         <p className="text-sm text-muted-foreground">
-                          {currentChatRoom.description || "연결됨"}
+                          {currentChatRoom?.name}에 오신 것을 환영합니다! 🎉
                         </p>
                       </div>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
                     </div>
-                  </CardHeader>
+                  </div>
 
-                  {/* Messages - 스크롤 가능 영역 */}
-                  <CardContent
-                    ref={messagesContainerRef}
-                    className="flex-1 overflow-y-auto p-4 space-y-4"
-                  >
-                    {/* 환영 메시지 - 항상 표시 */}
-                    <div className="flex justify-center items-center py-8">
-                      <div className="text-center space-y-3">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
-                          <svg
-                            className="w-8 h-8 text-primary"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
-                            />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xl font-bold text-foreground mb-1">
-                            소모임 채팅방에 입장하셨습니다
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {currentChatRoom?.name}에 오신 것을 환영합니다! 🎉
-                          </p>
-                        </div>
-                      </div>
+                  {/* 메시지 목록 */}
+                  {messages.length === 0 ? (
+                    <div className="flex justify-center items-center py-4">
+                      <p className="text-sm text-muted-foreground">
+                        첫 메시지를 보내보세요! 💬
+                      </p>
                     </div>
+                  ) : (
+                    <>
+                      {/* 메시지를 시간순으로 정렬 (오래된 것 위 → 최신 것 아래) */}
+                      {[...messages]
+                        .sort(
+                          (a, b) =>
+                            new Date(a.createdAt).getTime() -
+                            new Date(b.createdAt).getTime()
+                        )
+                        .map((msg, index) => {
+                          const isMyMessage = loginMember
+                            ? msg.senderId === loginMember.id
+                            : false;
+                          const isSystemMessage =
+                            msg.type === MessageType.ENTER ||
+                            msg.type === MessageType.LEAVE;
 
-                    {/* 메시지 목록 */}
-                    {messages.length === 0 ? (
-                      <div className="flex justify-center items-center py-4">
-                        <p className="text-sm text-muted-foreground">
-                          첫 메시지를 보내보세요! 💬
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        {/* 메시지를 시간순으로 정렬 (오래된 것 위 → 최신 것 아래) */}
-                        {[...messages]
-                          .sort(
-                            (a, b) =>
-                              new Date(a.createdAt).getTime() -
-                              new Date(b.createdAt).getTime()
-                          )
-                          .map((msg, index) => {
-                            const isMyMessage = msg.senderId === loginMember.id;
-                            const isSystemMessage =
-                              msg.type === MessageType.ENTER ||
-                              msg.type === MessageType.LEAVE;
+                          const uniqueKey = msg.id
+                            ? `msg-${msg.id}`
+                            : `msg-${index}-${
+                                msg.createdAt
+                              }-${msg.content.substring(0, 10)}`;
 
-                            const uniqueKey = msg.id
-                              ? `msg-${msg.id}`
-                              : `msg-${index}-${
-                                  msg.createdAt
-                                }-${msg.content.substring(0, 10)}`;
-
-                            // 시스템 메시지
-                            if (isSystemMessage) {
-                              return (
-                                <div
-                                  key={uniqueKey}
-                                  className="flex justify-center"
-                                >
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    {msg.content}
-                                  </Badge>
-                                </div>
-                              );
-                            }
-
-                            // 일반 메시지
+                          // 시스템 메시지
+                          if (isSystemMessage) {
                             return (
                               <div
                                 key={uniqueKey}
-                                className={`flex gap-3 ${
-                                  isMyMessage ? "flex-row-reverse" : ""
-                                }`}
+                                className="flex justify-center"
                               >
-                                {!isMyMessage && (
-                                  <Avatar className="h-8 w-8">
-                                    <AvatarFallback className="text-xs">
-                                      {msg.senderNickname[0]}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                )}
-                                <div
-                                  className={`flex flex-col ${
-                                    isMyMessage ? "items-end" : "items-start"
-                                  } max-w-[70%]`}
-                                >
-                                  {!isMyMessage && (
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-sm font-medium">
-                                        {msg.senderNickname}
-                                      </span>
-                                      {msg.senderId ===
-                                        currentChatRoom.creatorId && (
-                                        <Badge
-                                          variant="secondary"
-                                          className="text-xs"
-                                        >
-                                          방장
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                  <div
-                                    className={`rounded-lg px-4 py-2 ${
-                                      isMyMessage
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-muted"
-                                    }`}
-                                  >
-                                    <p className="text-sm leading-relaxed wrap-break-word">
-                                      {msg.content}
-                                    </p>
-                                  </div>
-                                  <span className="text-xs text-muted-foreground mt-1">
-                                    {format(new Date(msg.createdAt), "a h:mm", {
-                                      locale: ko,
-                                    })}
-                                  </span>
-                                </div>
+                                <Badge variant="secondary" className="text-xs">
+                                  {msg.content}
+                                </Badge>
                               </div>
                             );
-                          })}
-                      </>
-                    )}
-                  </CardContent>
+                          }
 
-                  {/* Message Input - 고정 하단 */}
-                  <div className="border-t p-4 shrink-0">
-                    <form onSubmit={handleSendMessage} className="flex gap-2">
-                      <Input
-                        placeholder={
-                          isConnected ? "메시지를 입력하세요..." : "연결 중..."
-                        }
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        className="flex-1"
-                        disabled={!isConnected}
-                      />
-                      <Button
-                        type="submit"
-                        disabled={!message.trim() || !isConnected}
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </form>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Sidebar */}
-              <div className="lg:col-span-1 space-y-4">
-                {/* Group Info */}
-                <Card>
-                  <CardHeader>
-                    <h3 className="font-semibold">소모임 정보</h3>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        참여 인원
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4 text-primary" />
-                        <span className="font-semibold text-primary">
-                          {currentChatRoom.currentParticipants}/
-                          {currentChatRoom.maxParticipants}명
-                        </span>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {currentChatRoom.region && (
-                      <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">
-                            활동 지역
-                          </p>
-                          <p className="text-sm font-medium">
-                            {currentChatRoom.region}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-start gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">생성일</p>
-                        <p className="text-sm font-medium">
-                          {format(
-                            new Date(currentChatRoom.createdAt),
-                            "yyyy년 MM월 dd일",
-                            {
-                              locale: ko,
-                            }
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Participants - API 기반 */}
-                <Card>
-                  <CardHeader>
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      참여자 ({participants.length})
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {participants.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        참여자 정보를 불러오는 중...
-                      </p>
-                    ) : (
-                      participants.map((participant) => {
-                        const isMe = participant.memberId === loginMember.id;
-
-                        return (
-                          <div
-                            key={participant.memberId}
-                            className="flex items-center gap-2"
-                          >
-                            <div className="relative">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="text-xs">
-                                  {participant.nickname[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background bg-green-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium truncate">
-                                  {participant.nickname}
-                                  {isMe && " (나)"}
-                                </p>
-                                {participant.isCreator && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs"
-                                  >
-                                    방장
-                                  </Badge>
+                          // 일반 메시지
+                          return (
+                            <div
+                              key={uniqueKey}
+                              className={`flex gap-3 ${
+                                isMyMessage ? "flex-row-reverse" : ""
+                              }`}
+                            >
+                              {!isMyMessage && (
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-xs">
+                                    {msg.senderNickname[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                              <div
+                                className={`flex flex-col ${
+                                  isMyMessage ? "items-end" : "items-start"
+                                } max-w-[70%]`}
+                              >
+                                {!isMyMessage && (
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm font-medium">
+                                      {msg.senderNickname}
+                                    </span>
+                                  </div>
                                 )}
+                                <div
+                                  className={`rounded-lg px-4 py-2 ${
+                                    isMyMessage
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted"
+                                  }`}
+                                >
+                                  <p className="text-sm leading-relaxed wrap-break-word">
+                                    {msg.content}
+                                  </p>
+                                </div>
+                                <span className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(msg.createdAt), "a h:mm", {
+                                    locale: ko,
+                                  })}
+                                </span>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </CardContent>
-                </Card>
+                          );
+                        })}
+                    </>
+                  )}
+                </CardContent>
 
-                {/* Leave Button */}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleLeave}
-                >
-                  소모임 나가기
-                </Button>
-              </div>
+                {/* Input */}
+                <div className="border-t p-4 shrink-0">
+                  <form onSubmit={handleSendMessage} className="flex gap-2">
+                    <Input
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="메시지를 입력하세요..."
+                      className="flex-1"
+                      disabled={!isConnected}
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={!isConnected || !message.trim()}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </form>
+                  {!isConnected && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      서버에 연결 중...
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1 space-y-4">
+              {/* Room Info */}
+              <Card>
+                <CardHeader>
+                  <h3 className="font-semibold">소모임 정보</h3>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">참여 인원</span>
+                    <span className="ml-auto font-medium text-primary">
+                      {currentChatRoom.currentParticipants}/
+                      {currentChatRoom.maxParticipants}명
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-muted-foreground">활동 지역</p>
+                      <p className="font-medium">
+                        {currentChatRoom.region || "지역 없음"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 text-sm">
+                    <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-muted-foreground">생성일</p>
+                      <p className="font-medium">
+                        {format(
+                          new Date(currentChatRoom.createdAt),
+                          "yyyy년 M월 d일",
+                          { locale: ko }
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Participants */}
+              <Card>
+                <CardHeader>
+                  <h3 className="font-semibold">
+                    참여자 ({participants.length})
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {participants.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      참여자 정보를 불러오는 중...
+                    </p>
+                  ) : (
+                    participants.map((participant) => {
+                      // ✅ null 체크 추가
+                      const isMe = loginMember
+                        ? participant.memberId === loginMember.id
+                        : false;
+
+                      return (
+                        <div
+                          key={participant.memberId}
+                          className="flex items-center gap-2"
+                        >
+                          <div className="relative">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">
+                                {participant.nickname[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background bg-green-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium truncate">
+                                {participant.nickname}
+                                {isMe && " (나)"}
+                              </p>
+                              {participant.isCreator && (
+                                <Badge variant="secondary" className="text-xs">
+                                  방장
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Leave Button */}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleLeave}
+              >
+                소모임 나가기
+              </Button>
             </div>
           </div>
         </div>
