@@ -30,7 +30,12 @@ export default function PaginatedPosts({
   const filtered =
     !selectedCategory || selectedCategory === "all"
       ? posts
-      : posts.filter((p: Post) => p.category === selectedCategory);
+      : posts.filter((p: Post) => {
+          if (!selectedCategory || selectedCategory.toLowerCase() === "all") {
+            return true;
+          }
+          return p.postType?.toLowerCase() === selectedCategory.toLowerCase();
+        });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
 

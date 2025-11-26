@@ -3,7 +3,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 export async function getOneLifePosts({
   page = 0,
   size = 10,
-  type = "FREE",
+  type = "ALL",
 }: {
   page?: number;
   size?: number;
@@ -15,7 +15,7 @@ export async function getOneLifePosts({
     type,
   });
 
-  const res = await fetch(`${BASE_URL}/api/v1/posts/onelife?${query}`, {
+  const res = await fetch(`${BASE_URL}/posts/onelife?${query}`, {
     method: "GET",
     credentials: "include",
   });
@@ -26,7 +26,7 @@ export async function getOneLifePosts({
 
 export async function getPostDetail(id: string) {
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/posts/onelife/${id}`,
+    `${process.env.NEXT_PUBLIC_API_URL}/posts/onelife/${id}`,
     {
       method: "GET",
       credentials: "include",

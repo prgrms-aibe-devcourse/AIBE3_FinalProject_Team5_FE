@@ -15,13 +15,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getPostDetail } from "@/app/api/post/postapi";
+import PostComments from "./postcomments";
 
 export default async function PostDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const post = await getPostDetail(params.id);
+  const { id } = await params; // await로 풀어서 id 사용
+  const post = await getPostDetail(id);
 
   if (!post) {
     return (
@@ -131,81 +133,10 @@ export default async function PostDetailPage({
               </Button>
             </div>
 
-            {post.category !== "정보" && (
-              <Card className="mb-12">
-                <CardContent className="pt-6">
-                  <h3 className="text-xl font-semibold mb-6">
-                    댓글 {post.comments}
-                  </h3>
-                  <div className="space-y-6">
-                    <div className="flex gap-3">
-                      <Avatar>
-                        <AvatarFallback>나</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <textarea
-                          className="w-full min-h-[100px] p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="댓글을 입력하세요..."
-                        />
-                        <div className="flex justify-end mt-2">
-                          <Button>댓글 작성</Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-6">
-                      <div className="flex gap-3">
-                        <Avatar>
-                          <AvatarFallback>수</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium">수납고수</span>
-                            <span className="text-sm text-muted-foreground">
-                              1시간 전
-                            </span>
-                          </div>
-                          <p className="text-sm leading-relaxed mb-2">
-                            정말 유용한 정보네요! 특히 벽면 활용 팁이 도움이
-                            많이 됐어요. 감사합니다!
-                          </p>
-                          <Button variant="ghost" size="sm" className="gap-1">
-                            <Heart className="h-3 w-3" />
-                            좋아요 5
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <Avatar>
-                          <AvatarFallback>원</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium">원룸러</span>
-                            <span className="text-sm text-muted-foreground">
-                              30분 전
-                            </span>
-                          </div>
-                          <p className="text-sm leading-relaxed mb-2">
-                            침대 밑 수납 박스 추천해주실 수 있나요?
-                          </p>
-                          <Button variant="ghost" size="sm" className="gap-1">
-                            <Heart className="h-3 w-3" />
-                            좋아요 2
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {post.category !== "정보" && <PostComments postId={id} />}
 
             {(() => {
-              const currentId = Number.parseInt(params.id, 10) || 0;
+              const currentId = Number.parseInt(id, 10) || 0;
               const prevPost =
                 currentId > 1
                   ? {

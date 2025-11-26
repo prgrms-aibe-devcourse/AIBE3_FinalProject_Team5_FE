@@ -20,14 +20,15 @@ export default function OneLifePage() {
 
   useEffect(() => {
     if (!searchParams) return;
-    const raw = searchParams.get("category");
+    const raw = searchParams.get("PostType");
     if (!raw) return;
 
     const map: Record<string, string> = {
-      tips: "TIP",
-      policy: "INFO",
+      tip: "TIP",
       info: "INFO",
-      all: "all",
+      hot: "HOT",
+      free: "FREE",
+      all: "ALL",
     };
 
     setSelectedCategory(map[raw] || raw);
@@ -41,7 +42,8 @@ export default function OneLifePage() {
         const data = await getOneLifePosts({
           page: 0,
           size: 10,
-          type: selectedCategory === "all" ? "FREE" : selectedCategory,
+          type:
+            selectedCategory === "all" ? "ALL" : selectedCategory.toUpperCase(),
         });
 
         setPosts(data.data.content);
@@ -57,10 +59,11 @@ export default function OneLifePage() {
   }, [selectedCategory]);
 
   const categories = [
-    { id: "All", label: "전체", value: "All" },
-    { id: "FREE", label: "자유", value: "FREE" },
-    { id: "TIP", label: "꿀팁", value: "TIP" },
-    { id: "INFO", label: "정보", value: "INFO" },
+    { id: "All", label: "전체", value: "all" },
+    { id: "FREE", label: "자유", value: "free" },
+    { id: "HOT", label: "인기", value: "hot" },
+    { id: "TIP", label: "꿀팁", value: "tip" },
+    { id: "INFO", label: "정보", value: "info" },
   ];
 
   return (
