@@ -163,24 +163,21 @@ export default async function RestaurantPage({ params }: Props) {
                                     영업시간
                                 </h3>
                                 <p className="text-sm text-muted-foreground">
-                                    영업시간 정보는 백엔드 연동 또는 수기
-                                    입력으로 제공됩니다.
+                                    영업시간 정보
                                 </p>
                             </div>
 
                             <div className="mt-4">
                                 <h3 className="text-lg font-semibold">메뉴</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    메뉴 정보는 백엔드 연동 또는 수기 입력으로
-                                    제공됩니다.
+                                    메뉴 정보
                                 </p>
                             </div>
 
                             <div className="mt-6">
                                 <h3 className="text-lg font-semibold">리뷰</h3>
                                 <div className="mt-2 text-sm text-muted-foreground">
-                                    리뷰는 백엔드 연동 시 표시됩니다. 현재는
-                                    리뷰 연동이 필요합니다.
+                                    리뷰 목록
                                 </div>
                             </div>
                         </div>
