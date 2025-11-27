@@ -8,6 +8,7 @@ type Props = {
     canNext: boolean;
     onPrev: () => void;
     onNext: () => void;
+    totalPages?: number;
 };
 
 export default function Pagination({
@@ -16,6 +17,7 @@ export default function Pagination({
     canNext,
     onPrev,
     onNext,
+    totalPages,
 }: Props) {
     return (
         <div className="p-4 border-t flex items-center justify-center gap-2">
@@ -27,7 +29,10 @@ export default function Pagination({
             >
                 이전
             </Button>
-            <span className="text-xs text-muted-foreground">{page}</span>
+            <span className="text-xs text-muted-foreground">
+                {page}
+                {totalPages ? ` / ${totalPages}` : ''}
+            </span>
             <Button
                 variant="outline"
                 size="sm"
