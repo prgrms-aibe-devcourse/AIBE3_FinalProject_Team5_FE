@@ -35,7 +35,7 @@ export default function ProfileEditPage() {
   const router = useRouter();
   const [formData, setFormData] = useState<FormData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { loginMember, isLogin } = useAuth();
+  const { loginMember, isLogin, reloadMember } = useAuth();
   const [loading, setLoading] = useState(false);
   const [prevNickname, setPrevNickname] = useState("");
   const [nicknameAvailable, setNicknameAvailable] = useState(false);
@@ -44,6 +44,7 @@ export default function ProfileEditPage() {
   const [emailWait, setEamilWait] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
+  const [social, setSocial] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,11 +61,13 @@ export default function ProfileEditPage() {
 
     if (nicknameAvailable !== true && formData?.nickname !== prevNickname) {
       alert("닉네임 중복확인을 해주세요.");
+      setIsSubmitting(false);
       return;
     }
 
     if (emailAvailable !== true && formData?.email !== prevEmail) {
       alert("이메일 인증을 해주세요.");
+      setIsSubmitting(false);
       return;
     }
 
@@ -108,6 +111,9 @@ export default function ProfileEditPage() {
             return;
           }
           const result = await res.json();
+          if (result.email.split("__")[0] == "KAKAO") {
+            setSocial(true);
+          }
           setFormData(result);
           setPrevEmail(result.email);
           setPrevNickname(result.nickname);
@@ -263,6 +269,18 @@ export default function ProfileEditPage() {
     });
   };
 
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -331,41 +349,44 @@ export default function ProfileEditPage() {
                           </Button>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email">이메일</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="email"
-                            name="email"
-                            type="email"
-                            value={formData?.email}
-                            onChange={handleInputChange}
-                            placeholder="이메일을 입력하세요"
-                            required
-                            disabled={emailAvailable || emailWait}
-                          />
-                          {emailWait ? (
-                            <Button
-                              type="button"
-                              onClick={() => {
-                                setEamilWait(false);
-                              }}
-                            >
-                              이메일 변경
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              disabled={emailWait || emailAvailable}
-                              onClick={() => {
-                                sendEmailVerification();
-                              }}
-                            >
-                              {emailLoading ? "로딩중..." : "이메일 인증"}
-                            </Button>
-                          )}
+                      {social == false && (
+                        <div className="space-y-2">
+                          <Label htmlFor="email">이메일</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="email"
+                              name="email"
+                              type="email"
+                              value={formData?.email}
+                              onChange={handleInputChange}
+                              placeholder="이메일을 입력하세요"
+                              required
+                              disabled={emailAvailable || emailWait}
+                            />
+                            {emailWait ? (
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  setEamilWait(false);
+                                }}
+                              >
+                                이메일 변경
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                disabled={emailWait || emailAvailable}
+                                onClick={() => {
+                                  sendEmailVerification();
+                                }}
+                              >
+                                {emailLoading ? "로딩중..." : "이메일 인증"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>{" "}
+                      )}
+
                       {emailWait == true && (
                         <div className="flex gap-2">
                           <Input
@@ -488,21 +509,27 @@ export default function ProfileEditPage() {
                   <CardTitle className="text-xl">계정 설정</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {social == false && (
+                    <div>
+                      <Link href="/mypage/password-change">
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start bg-transparent"
+                        >
+                          비밀번호 변경
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                   <div>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start bg-transparent"
-                    >
-                      비밀번호 변경
-                    </Button>
-                  </div>
-                  <div>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-destructive hover:text-destructive bg-transparent"
-                    >
-                      계정 탈퇴
-                    </Button>
+                    <Link href="/mypage/delete-account">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-destructive hover:text-destructive bg-transparent"
+                      >
+                        계정 탈퇴
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
