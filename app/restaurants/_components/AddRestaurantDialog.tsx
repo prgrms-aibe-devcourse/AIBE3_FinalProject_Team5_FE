@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/app/global/auth/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,6 +22,8 @@ type Props = {
 
 export default function AddRestaurantDialog({ lastClicked, onSuccess }: Props) {
     const [open, setOpen] = useState(false);
+    const router = useRouter();
+    const { isLogin } = useAuth();
     const [form, setForm] = useState({
         name: '',
         jibunAddress: '',
@@ -90,11 +94,24 @@ export default function AddRestaurantDialog({ lastClicked, onSuccess }: Props) {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
+            {isLogin ? (
+                <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                        식당 추가
+                    </Button>
+                </DialogTrigger>
+            ) : (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                        // 비로그인 상태면 로그인 페이지로 이동
+                        router.push('/login');
+                    }}
+                >
                     식당 추가
                 </Button>
-            </DialogTrigger>
+            )}
             <DialogContent className="sm:max-w-[520px]">
                 <DialogHeader>
                     <DialogTitle>식당 추가</DialogTitle>
