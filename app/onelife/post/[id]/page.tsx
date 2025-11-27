@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { getPostDetail } from "@/app/api/post/postapi";
 import PostComments from "./postcomments";
+import PostMenu from "./postmenu";
 
 export default async function PostDetailPage({
   params,
@@ -23,8 +24,11 @@ export default async function PostDetailPage({
   params: { id: string };
 }) {
   const { id } = await params;
+  console.log("📌 [Server] Extracted id:", id);
   const post = await getPostDetail(id);
-
+  console.log("📌 [Server] getPostDetail result:", post);
+  const isAuthor =
+    post.currentMemberId && post.currentMemberId === post.memberId;
   if (!post) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -32,6 +36,7 @@ export default async function PostDetailPage({
       </div>
     );
   }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -59,9 +64,13 @@ export default async function PostDetailPage({
                   {new Date(post.createdAt).toLocaleString()}
                 </span>
               </div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-6 text-balance">
-                {post.title}
-              </h1>
+              <div className="flex items-start justify-between mb-6">
+                <h1 className="text-3xl md:text-4xl font-bold text-balance">
+                  {post.title}
+                </h1>
+
+                <PostMenu postId={id} isAuthor={isAuthor} />
+              </div>
 
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -148,7 +157,7 @@ export default async function PostDetailPage({
                   : null;
               const nextPost = {
                 id: currentId + 1,
-                category: "혼밥",
+                category: "자유",
                 title: "다음 게시글 보기",
                 author: "",
               };

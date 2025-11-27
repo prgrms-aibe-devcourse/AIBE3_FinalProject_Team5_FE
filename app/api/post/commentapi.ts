@@ -47,7 +47,7 @@ export async function updateComment(
   content: string
 ) {
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/comment/${postId}/${commentId}`,
+    `${process.env.NEXT_PUBLIC_API_URL}/comment/${postId}/${commentId}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

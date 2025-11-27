@@ -25,14 +25,24 @@ export async function getOneLifePosts({
 }
 
 export async function getPostDetail(id: string) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/posts/onelife/${id}`,
-    {
-      method: "GET",
-      credentials: "include",
-    }
-  );
+  const res = await fetch(`${BASE_URL}/posts/onelife/${id}`, {
+    method: "GET",
+    credentials: "include",
+  });
 
   const json = await res.json();
   return json.data;
+}
+
+export async function deletePost(id: string | number) {
+  const res = await fetch(`${BASE_URL}/posts/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    throw new Error("게시글 삭제 실패");
+  }
+
+  return true;
 }
