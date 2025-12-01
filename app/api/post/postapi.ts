@@ -1,4 +1,8 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import type {
+  PostRequestDto,
+  PostResponse,
+} from "../../onelife/types/postResponse";
 
 export async function getOneLifePosts({
   page = 0,
@@ -30,12 +34,18 @@ export async function getPostDetail(id: string) {
     credentials: "include",
   });
 
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("API 호출 실패:", res.status, text);
+    throw new Error(`API 호출 실패: ${res.status}`);
+  }
+
   const json = await res.json();
   return json.data;
 }
 
 export async function deletePost(id: string | number) {
-  const res = await fetch(`${BASE_URL}/posts/${id}`, {
+  const res = await fetch(`${BASE_URL}/posts/onelife/${id}`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -45,4 +55,27 @@ export async function deletePost(id: string | number) {
   }
 
   return true;
+}
+
+export async function updatePost(
+  id: string,
+  dto: PostRequestDto
+): Promise<PostResponse> {
+  const res = await fetch(`${BASE_URL}/posts/onelife/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("게시글 수정 실패:", res.status, text);
+    throw new Error(`게시글 수정 실패: ${res.status}`);
+  }
+
+  const json = await res.json();
+  return json.data;
 }

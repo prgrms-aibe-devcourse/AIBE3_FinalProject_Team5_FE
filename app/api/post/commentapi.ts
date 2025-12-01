@@ -1,26 +1,25 @@
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+
 export async function getComments(postId: string) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/comment/${postId}`,
-    {
-      method: "GET",
-      credentials: "include",
-    }
-  );
+  const res = await fetch(`${BASE_URL}/comment/${postId}`, {
+    method: "GET",
+    credentials: "include",
+  });
 
   const json = await res.json();
   return json.data;
 }
 
 export async function createComment(postId: string, content: string) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/comment/${postId}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ postId, content }),
-    }
-  );
+  const res = await fetch(`${BASE_URL}/comment/${postId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({ postId, content }),
+  });
   if (!res.ok) {
     throw new Error("댓글 작성에 실패했습니다.");
   }
@@ -30,13 +29,10 @@ export async function createComment(postId: string, content: string) {
 }
 
 export async function deleteComment(postId: string, commentId: number) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/comment/${postId}/${commentId}`,
-    {
-      method: "DELETE",
-      credentials: "include",
-    }
-  );
+  const res = await fetch(`${BASE_URL}/comment/${postId}/${commentId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
 
   return res.json();
 }
@@ -50,7 +46,9 @@ export async function updateComment(
     `${process.env.NEXT_PUBLIC_API_URL}/comment/${postId}/${commentId}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       credentials: "include",
       body: JSON.stringify({ content }),
     }

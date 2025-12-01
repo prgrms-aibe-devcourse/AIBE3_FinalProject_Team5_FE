@@ -95,7 +95,7 @@ export default function PaginatedPosts({
                             "/placeholder.svg" ||
                             "/placeholder.svg"
                           }
-                          alt={post.author}
+                          alt={post.memberNickname}
                           width={24}
                           height={24}
                           className="rounded-full"
