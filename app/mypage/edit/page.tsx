@@ -46,6 +46,7 @@ export default function ProfileEditPage() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [social, setSocial] = useState(false);
+  const [profileImageUrl, setProfileImageUrl] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -75,16 +76,27 @@ export default function ProfileEditPage() {
       return;
     }
 
+    if (formData?.regions.length === 0) {
+      alert("지역은 최소 한개 이상 선택해야 합니다.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const fd = new FormData();
 
     fd.append(
       "request",
-      JSON.stringify({
-        nickname: formData?.nickname,
-        email: formData?.email,
-        introduction: formData?.introduction,
-        regions: formData?.regions,
-      })
+      new Blob(
+        [
+          JSON.stringify({
+            nickname: formData?.nickname,
+            email: formData?.email,
+            introduction: formData?.introduction,
+            regions: formData?.regions,
+          }),
+        ],
+        { type: "application/json" }
+      )
     );
 
     if (formData?.profileImage) {
@@ -135,6 +147,7 @@ export default function ProfileEditPage() {
           setFormData(result);
           setPrevEmail(result.email);
           setPrevNickname(result.nickname);
+          setProfileImageUrl(result.profileImageUrl);
           setLoading(true);
         } catch (err) {
           console.error("마이페이지 수정 요청 실패:", err);
@@ -348,6 +361,12 @@ export default function ProfileEditPage() {
                         <Avatar className="h-32 w-32">
                           {preview ? (
                             <AvatarImage src={preview} />
+                          ) : profileImageUrl !== "" ? (
+                            <AvatarImage
+                              src={profileImageUrl}
+                              alt={formData?.nickname?.[0]}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <AvatarFallback className="text-4xl">
                               {formData?.nickname?.[0]}
@@ -521,8 +540,8 @@ export default function ProfileEditPage() {
                       <div className="space-y-2">
                         <Label htmlFor="bio">소개</Label>
                         <Textarea
-                          id="bio"
-                          name="bio"
+                          id="introduction"
+                          name="introduction"
                           value={formData?.introduction ?? ""}
                           onChange={handleInputChange}
                           placeholder="자기소개를 입력하세요"
