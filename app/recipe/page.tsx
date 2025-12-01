@@ -24,14 +24,17 @@ import {
   ChevronUp,
   BookmarkCheck,
 } from "lucide-react";
+import { serverHooks } from "next/dist/server/app-render/entry-base";
 
 export default function RecipePage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [cookingTime, setCookingTime] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [recipes, setRecipes] = useState<any[]>([]);
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  const [servings, setServings] = useState("");
 
   const savedRecipes = [
     { id: 1, title: "김치볶음밥", category: "한식", time: "10분" },
@@ -207,10 +210,6 @@ export default function RecipePage() {
                         className="min-h-[120px]"
                         required
                       />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        보유 재료, 원하는 요리 종류, 조리 시간 등을 자유롭게
-                        입력하세요
-                      </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -227,9 +226,7 @@ export default function RecipePage() {
                             <SelectItem value="중식">중식</SelectItem>
                             <SelectItem value="일식">일식</SelectItem>
                             <SelectItem value="양식">양식</SelectItem>
-                            <SelectItem value="분식">분식</SelectItem>
                             <SelectItem value="디저트">디저트</SelectItem>
-                            <SelectItem value="간식">간식</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -250,6 +247,44 @@ export default function RecipePage() {
                             <SelectItem value="10-20분">10-20분</SelectItem>
                             <SelectItem value="20-30분">20-30분</SelectItem>
                             <SelectItem value="30분 이상">30분 이상</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          난이도
+                        </label>
+                        <Select
+                          value={difficulty}
+                          onValueChange={setDifficulty}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="선택하세요" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="쉬움">쉬움</SelectItem>
+                            <SelectItem value="보통">보통</SelectItem>
+                            <SelectItem value="어려움">어려움</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          인분
+                        </label>
+                        <Select
+                          value={servings}
+                          onValueChange={setServings}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="선택하세요" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1인분">1인분</SelectItem>
+                            <SelectItem value="2인분">2인분</SelectItem>
+                            <SelectItem value="3인분">3인분</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
