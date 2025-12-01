@@ -26,7 +26,15 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { refresh } from "next/cache";
+import {
+  fetchSavedRecipes,
+  deleteRecipe,
+  type RecipeResponse,
+  mapCategoryToDisplay,
+  mapCookingTimeToDisplay,
+  mapDifficultyToDisplay,
+  mapServingsToDisplay,
+} from "@/lib/api/recipeApi";
 
 interface User {
   nickname: string;
@@ -140,87 +148,8 @@ export default function MyPage() {
     },
   ];
 
-  const myRecipes = [
-    {
-      id: 1,
-      title: "5분만에 완성하는 간단 김치볶음밥",
-      category: "한식",
-      cookingTime: "10분 이내",
-      views: 892,
-      likes: 67,
-      comments: 15,
-      date: "3일 전",
-      description: "냉장고에 있는 김치와 밥으로 5분 만에 완성하는 맛있는 한끼",
-      ingredients: [
-        "밥 1공기",
-        "김치 1/2컵",
-        "식용유 1큰술",
-        "참기름 약간",
-        "김가루 약간",
-      ],
-      steps: [
-        "팬에 식용유를 두르고 김치를 볶아주세요.",
-        "김치가 볶아지면 밥을 넣고 함께 볶아주세요.",
-        "밥이 고루 섞이면 참기름을 넣어주세요.",
-        "그릇에 담고 김가루를 뿌려 완성!",
-      ],
-      servings: "1인분",
-      difficulty: "쉬움",
-    },
-    {
-      id: 2,
-      title: "집에서 만드는 크림 파스타",
-      category: "양식",
-      cookingTime: "20-30분",
-      views: 1245,
-      likes: 89,
-      comments: 23,
-      date: "1주 전",
-      description: "생크림과 우유로 만드는 부드러운 크림 파스타",
-      ingredients: [
-        "파스타면 100g",
-        "생크림 100ml",
-        "우유 50ml",
-        "마늘 2쪽",
-        "베이컨 3줄",
-        "파마산 치즈 약간",
-      ],
-      steps: [
-        "파스타면을 삶아주세요.",
-        "팬에 마늘과 베이컨을 볶아주세요.",
-        "생크림과 우유를 넣고 끓여주세요.",
-        "삶은 파스타와 치즈를 넣고 버무려 완성!",
-      ],
-      servings: "1인분",
-      difficulty: "보통",
-    },
-    {
-      id: 3,
-      title: "치즈 듬뿍 오믈렛",
-      category: "간식",
-      cookingTime: "10분 이내",
-      views: 987,
-      likes: 72,
-      comments: 18,
-      date: "2주 전",
-      description: "폭신한 오믈렛에 치즈를 가득 넣어 만드는 브런치 메뉴",
-      ingredients: [
-        "계란 3개",
-        "우유 2큰술",
-        "모짜렐라 치즈 50g",
-        "소금 약간",
-        "버터 1큰술",
-      ],
-      steps: [
-        "계란을 풀고 우유와 소금을 넣어 섞어주세요.",
-        "팬에 버터를 녹이고 계란물을 부어주세요.",
-        "치즈를 가운데 올리고 반으로 접어주세요.",
-        "약불에서 익혀 완성!",
-      ],
-      servings: "1인분",
-      difficulty: "쉬움",
-    },
-  ];
+  const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
+  const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
 
   const myComments = [
     {
@@ -287,6 +216,40 @@ export default function MyPage() {
       getMemberDetail();
     }
   }, [isLogin, loginMember]);
+
+  // 저장된 레시피 목록 불러오기
+  useEffect(() => {
+    if (isLogin && loading) {
+      loadSavedRecipes();
+    }
+  }, [isLogin, loading]);
+
+  const loadSavedRecipes = async () => {
+    try {
+      setIsLoadingRecipes(true);
+      const data = await fetchSavedRecipes();
+      setMyRecipes(data);
+    } catch (error) {
+      console.error("저장된 레시피 목록 불러오기 실패:", error);
+    } finally {
+      setIsLoadingRecipes(false);
+    }
+  };
+
+  const handleDeleteRecipe = async (recipeId: number) => {
+    if (!confirm("정말 이 레시피를 삭제하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      await deleteRecipe(recipeId);
+      alert("레시피가 삭제되었습니다.");
+      loadSavedRecipes();
+    } catch (error) {
+      console.error("레시피 삭제 실패:", error);
+      alert("레시피 삭제에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
 
   const toggleRecipe = (id: number) => {
     const newExpanded = new Set(expandedRecipes);
@@ -669,132 +632,136 @@ export default function MyPage() {
 
                       {activeTab === "recipes" && (
                         <div className="space-y-4">
-                          {myRecipes.map((recipe) => (
-                            <Card key={recipe.id} className="overflow-hidden">
-                              <CardHeader
-                                className="cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => toggleRecipe(recipe.id)}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                      <CardTitle className="text-xl">
-                                        {recipe.title}
-                                      </CardTitle>
-                                      <Badge
-                                        variant="secondary"
-                                        className="text-xs"
-                                      >
-                                        {recipe.category}
-                                      </Badge>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                      <div className="flex items-center gap-1">
-                                        <Clock className="h-4 w-4" />
-                                        <span>{recipe.cookingTime}</span>
+                          {isLoadingRecipes ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              로딩 중...
+                            </div>
+                          ) : myRecipes.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              저장된 레시피가 없습니다.
+                            </div>
+                          ) : (
+                            myRecipes.map((recipe) => (
+                              <Card key={recipe.id} className="overflow-hidden">
+                                <CardHeader
+                                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                  onClick={() => toggleRecipe(recipe.id)}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <CardTitle className="text-xl">
+                                          {recipe.title}
+                                        </CardTitle>
+                                        <Badge
+                                          variant="secondary"
+                                          className="text-xs"
+                                        >
+                                          {mapCategoryToDisplay(recipe.category)}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                        <div className="flex items-center gap-1">
+                                          <Clock className="h-4 w-4" />
+                                          <span>
+                                            {mapCookingTimeToDisplay(
+                                              recipe.cookingTime
+                                            )}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="text-muted-foreground">
-                                    {expandedRecipes.has(recipe.id) ? (
-                                      <ChevronUp className="h-5 w-5" />
-                                    ) : (
-                                      <ChevronDown className="h-5 w-5" />
-                                    )}
-                                  </div>
-                                </div>
-                              </CardHeader>
-
-                              {expandedRecipes.has(recipe.id) && (
-                                <CardContent className="space-y-6 pt-0">
-                                  <p className="text-muted-foreground">
-                                    {recipe.description}
-                                  </p>
-
-                                  <div className="flex gap-6">
-                                    <div className="flex items-center gap-2">
-                                      <Users className="h-4 w-4 text-muted-foreground" />
-                                      <span className="text-sm">
-                                        {recipe.servings}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <ChefHat className="h-4 w-4 text-muted-foreground" />
-                                      <span className="text-sm">
-                                        {recipe.difficulty}
-                                      </span>
-                                    </div>
-                                    <span className="text-sm text-muted-foreground">
-                                      {recipe.date}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-1">
-                                      <Eye className="h-3 w-3" />
-                                      <span>{recipe.views}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Heart className="h-3 w-3" />
-                                      <span>{recipe.likes}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <MessageCircle className="h-3 w-3" />
-                                      <span>{recipe.comments}</span>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <h3 className="font-semibold mb-3">
-                                      필요한 재료
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      {recipe.ingredients.map(
-                                        (ingredient: string, idx: number) => (
-                                          <div
-                                            key={idx}
-                                            className="flex items-center gap-2 text-sm"
-                                          >
-                                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                            <span>{ingredient}</span>
-                                          </div>
-                                        )
+                                    <div className="text-muted-foreground">
+                                      {expandedRecipes.has(recipe.id) ? (
+                                        <ChevronUp className="h-5 w-5" />
+                                      ) : (
+                                        <ChevronDown className="h-5 w-5" />
                                       )}
                                     </div>
                                   </div>
+                                </CardHeader>
 
-                                  <div>
-                                    <h3 className="font-semibold mb-3">
-                                      조리 순서
-                                    </h3>
-                                    <div className="space-y-3">
-                                      {recipe.steps.map(
-                                        (step: string, idx: number) => (
-                                          <div key={idx} className="flex gap-3">
-                                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                                              {idx + 1}
+                                {expandedRecipes.has(recipe.id) && (
+                                  <CardContent className="space-y-6 pt-0">
+                                    <p className="text-muted-foreground">
+                                      {recipe.description}
+                                    </p>
+
+                                    <div className="flex gap-6">
+                                      <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-muted-foreground" />
+                                        <span className="text-sm">
+                                          {mapServingsToDisplay(recipe.servings)}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <ChefHat className="h-4 w-4 text-muted-foreground" />
+                                        <span className="text-sm">
+                                          {mapDifficultyToDisplay(
+                                            recipe.difficulty
+                                          )}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <h3 className="font-semibold mb-3">
+                                        필요한 재료
+                                      </h3>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {recipe.ingredients.map(
+                                          (
+                                            ingredient: string,
+                                            idx: number
+                                          ) => (
+                                            <div
+                                              key={idx}
+                                              className="flex items-center gap-2 text-sm"
+                                            >
+                                              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                              <span>{ingredient}</span>
                                             </div>
-                                            <p className="text-sm pt-0.5">
-                                              {step}
-                                            </p>
-                                          </div>
-                                        )
-                                      )}
+                                          )
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
 
-                                  <div className="flex gap-2 pt-4">
-                                    <Button
-                                      variant="outline"
-                                      className="flex-1 text-destructive bg-transparent"
-                                    >
-                                      삭제
-                                    </Button>
-                                  </div>
-                                </CardContent>
-                              )}
-                            </Card>
-                          ))}
+                                    <div>
+                                      <h3 className="font-semibold mb-3">
+                                        조리 순서
+                                      </h3>
+                                      <div className="space-y-3">
+                                        {recipe.steps.map(
+                                          (step: string, idx: number) => (
+                                            <div key={idx} className="flex gap-3">
+                                              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+                                                {idx + 1}
+                                              </div>
+                                              <p className="text-sm pt-0.5">
+                                                {step}
+                                              </p>
+                                            </div>
+                                          )
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-4">
+                                      <Button
+                                        variant="outline"
+                                        className="flex-1 text-destructive bg-transparent"
+                                        onClick={() =>
+                                          handleDeleteRecipe(recipe.id)
+                                        }
+                                      >
+                                        삭제
+                                      </Button>
+                                    </div>
+                                  </CardContent>
+                                )}
+                              </Card>
+                            ))
+                          )}
                         </div>
                       )}
 
