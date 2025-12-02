@@ -10,7 +10,7 @@ type Props = {
 };
 
 function StarRow({ value }: { value?: number }) {
-    const v = Math.round((value ?? 0) * 2) / 2; // half steps
+    const v = Math.round((value ?? 0) * 2) / 2;
     const stars = [0, 1, 2, 3, 4].map((i) => {
         const pos = i + 1;
         if (v >= pos) return 'full';

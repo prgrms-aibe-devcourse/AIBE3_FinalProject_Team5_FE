@@ -77,7 +77,14 @@ export default function RestaurantsList({
                                     <div className="flex items-center gap-1 mt-1">
                                         <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                                         <span className="text-xs font-medium">
-                                            {rating ?? '-'}
+                                            {typeof rating === 'number' &&
+                                            Number.isFinite(rating)
+                                                ? (
+                                                      Math.round(
+                                                          Number(rating) * 10
+                                                      ) / 10
+                                                  ).toFixed(1)
+                                                : '-'}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
                                             ({reviews ?? 0})

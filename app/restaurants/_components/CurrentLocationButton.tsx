@@ -15,8 +15,6 @@ export default function CurrentLocationButton({
     onPanToCurrent,
 }: Props) {
     const handleClick = () => {
-        // If we already have a current position and the parent provided a pan handler,
-        // just pan to that position instead of requesting geolocation again.
         if (currentPos && typeof onPanToCurrent === 'function') {
             try {
                 onPanToCurrent(currentPos);
