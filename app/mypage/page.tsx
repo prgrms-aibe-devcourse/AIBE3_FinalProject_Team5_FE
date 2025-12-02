@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/app/global/auth/useAuth";
@@ -43,6 +44,7 @@ interface User {
 }
 
 export default function MyPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
   const [chatType, setChatType] = useState<"small-group" | "group-buying">(
     "small-group"
@@ -51,7 +53,7 @@ export default function MyPage() {
     new Set()
   );
   const [postCategory, setPostCategory] = useState<string>("전체");
-  const { loginMember, isLogin } = useAuth();
+  const { loginMember, isLogin, reloadMember } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [loading, setLoading] = useState(false);
@@ -275,6 +277,7 @@ export default function MyPage() {
             return;
           }
           const result = await res.json();
+          console.log(result?.avatar);
           setUser(result);
           setLoading(true);
         } catch (err) {
@@ -306,6 +309,18 @@ export default function MyPage() {
     ...Array.from(new Set(myPosts.map((post) => post.category))),
   ];
 
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
+
+    check();
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -320,9 +335,17 @@ export default function MyPage() {
                     <CardContent className="pt-6">
                       <div className="flex flex-col items-center text-center mb-6">
                         <Avatar className="h-24 w-24 mb-4">
-                          <AvatarFallback className="text-2xl">
-                            {user?.nickname[0]}
-                          </AvatarFallback>
+                          {user?.avatar ? (
+                            <AvatarImage
+                              src={user.avatar}
+                              alt={user.nickname}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <AvatarFallback className="text-2xl">
+                              {user?.nickname[0]}
+                            </AvatarFallback>
+                          )}
                         </Avatar>
                         <h2 className="text-xl font-bold mb-1">
                           {user?.nickname}

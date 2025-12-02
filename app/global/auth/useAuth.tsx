@@ -17,25 +17,25 @@ export interface MemberDto {
 }
 
 interface AuthContextType {
-    loginMember: MemberDto | null; //로그인 멤버의 정보 { id:long, email:string, nickname:string }
-    isLogin: boolean; //로그인 상태 보여주는 boolean
-    reloadMember: () => void; //로그인 멤버의 상태 최신화
-    logoutMember: () => void; //로그아웃 요청 후 쿠키삭제
-    accessToken: string | null;
-    apiKey: string | null;
-    setAccessToken: (value: string) => void;
-    setApiKey: (value: string) => void;
+  loginMember: MemberDto | null; //로그인 멤버의 정보 { id:long, email:string, nickname:string }
+  isLogin: boolean; //로그인 상태 보여주는 boolean
+  reloadMember: () => Promise<boolean>; //로그인 멤버의 상태 최신화
+  logoutMember: () => void; //로그아웃 요청 후 쿠키삭제
+  accessToken: string | null;
+  apiKey: string | null;
+  setAccessToken: (value: string) => void;
+  setApiKey: (value: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
-    loginMember: null,
-    isLogin: false,
-    reloadMember: () => {},
-    logoutMember: () => {},
-    accessToken: null,
-    apiKey: null,
-    setAccessToken: () => {},
-    setApiKey: () => {},
+  loginMember: null,
+  isLogin: false,
+  reloadMember: async () => false,
+  logoutMember: () => {},
+  accessToken: null,
+  apiKey: null,
+  setAccessToken: () => {},
+  setApiKey: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,32 +44,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [accessToken, setAccessToken] = useState<string | null>('');
     const [apiKey, setApiKey] = useState<string | null>('');
 
-    const fetchMember = async () => {
-        try {
-            const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(accessToken && apiKey
-                        ? { Authorization: `Bearer ${apiKey} ${accessToken}` }
-                        : {}),
-                },
-                credentials: 'include',
-            });
-            if (!res.ok) {
-                setLoginMember(null);
-                setIsLogin(false);
-                return;
-            }
-            const data = await res.json();
-            setLoginMember(data.data);
-            setIsLogin(true);
-        } catch (err) {
-            console.error('로그인 정보 요청 실패:', err);
-            setLoginMember(null);
-            setIsLogin(false);
-        }
-    };
+  const fetchMember = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken && apiKey
+            ? { Authorization: `Bearer ${apiKey} ${accessToken}` }
+            : {}),
+        },
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setLoginMember(null);
+        setIsLogin(false);
+        return false;
+      }
+      const data = await res.json();
+      setLoginMember(data.data);
+      setIsLogin(true);
+      return true;
+    } catch (err) {
+      console.error("로그인 정보 요청 실패:", err);
+      setLoginMember(null);
+      setIsLogin(false);
+      return false;
+    }
+  };
 
     const logoutMember = async () => {
         try {
