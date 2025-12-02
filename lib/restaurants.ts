@@ -8,19 +8,13 @@ export type Restaurant = {
     longitude: number;
     averageRating?: number;
     reviewCount?: number;
-    // optional fields used by frontend
     image?: string;
-    // if backend provides distance in km (as in your service), it will be present
+    ownerId?: number | null;
+    isLocal?: boolean;
     distanceKm?: number;
 };
 
-export type RestaurantListResponse = {
-    data: Restaurant[];
-    page: number;
-    size: number;
-    totalElements: number;
-    totalPages: number;
-};
+export type RestaurantListResponse = Restaurant[];
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(
     /\/$/,
@@ -61,7 +55,8 @@ export async function fetchRestaurants(params: {
         );
         throw new Error(`Failed to fetch restaurants: ${res.status} ${body}`);
     }
-    return res.json();
+    const body = await res.json();
+    return (body && body.data) || [];
 }
 
 export async function createRestaurant(payload: {
@@ -71,7 +66,7 @@ export async function createRestaurant(payload: {
     phone: string;
     latitude: number;
     longitude: number;
-}): Promise<void> {
+}): Promise<Restaurant> {
     const postUrl = `${API_BASE}/api/v1/restaurants`;
     const res = await fetch(
         postUrl.startsWith('http') ? postUrl : '/api/v1/restaurants',
@@ -86,6 +81,73 @@ export async function createRestaurant(payload: {
         const txt = await res.text();
         throw new Error(txt || '등록 실패');
     }
+    const body = await res.json();
+    return (body && body.data) || body;
+}
+
+export async function createRestaurantWithOpts(
+    payload: {
+        name: string;
+        jibunAddress: string;
+        roadAddress: string;
+        phone: string;
+        latitude: number;
+        longitude: number;
+    },
+    opts?: { asImported?: boolean }
+): Promise<Restaurant> {
+    const qs = new URLSearchParams();
+    if (opts && opts.asImported) qs.set('asImported', 'true');
+    const postUrl = `${API_BASE}/api/v1/restaurants${
+        qs.toString() ? '?' + qs.toString() : ''
+    }`;
+    const res = await fetch(
+        postUrl.startsWith('http')
+            ? postUrl
+            : `/api/v1/restaurants${qs.toString() ? '?' + qs.toString() : ''}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        }
+    );
+    if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || '등록 실패');
+    }
+    const body = await res.json();
+    return (body && body.data) || body;
+}
+
+export async function updateRestaurant(
+    id: number | string,
+    payload: {
+        name?: string;
+        jibunAddress?: string;
+        roadAddress?: string;
+        phone?: string;
+        latitude?: number;
+        longitude?: number;
+    }
+): Promise<Restaurant> {
+    const rid = String(id);
+    const url = `${API_BASE}/api/v1/restaurants/${rid}`.replace(/\/$/, '');
+    const res = await fetch(
+        url.startsWith('http') ? url : `/api/v1/restaurants/${rid}`,
+        {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        }
+    );
+    if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || '수정 실패');
+    }
+    const body = await res.json();
+    return (body && body.data) || body;
 }
 
 export async function fetchNearbyRestaurants(params: {
@@ -93,7 +155,6 @@ export async function fetchNearbyRestaurants(params: {
     lng: number;
     page?: number;
     size?: number;
-    // backend expects radius in km per your service signature
     radiusKm?: number;
 }): Promise<RestaurantListResponse> {
     const { lat, lng, page = 1, size = 10, radiusKm } = params;
@@ -129,7 +190,8 @@ export async function fetchNearbyRestaurants(params: {
             `Failed to fetch nearby restaurants: ${res.status} ${body}`
         );
     }
-    return res.json();
+    const body = await res.json();
+    return (body && body.data) || [];
 }
 
 export async function deleteRestaurant(id: number): Promise<void> {
@@ -168,7 +230,8 @@ export async function fetchRestaurantById(
         );
         throw new Error(`Failed to fetch restaurant: ${res.status} ${body}`);
     }
-    return res.json();
+    const body = await res.json();
+    return (body && body.data) || body;
 }
 
 export async function recommendRestaurant(id: number): Promise<void> {
