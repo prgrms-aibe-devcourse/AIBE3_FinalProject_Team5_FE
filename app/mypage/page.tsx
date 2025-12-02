@@ -7,7 +7,7 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/app/global/auth/useAuth";
@@ -277,6 +277,7 @@ export default function MyPage() {
             return;
           }
           const result = await res.json();
+          console.log(result?.avatar);
           setUser(result);
           setLoading(true);
         } catch (err) {
@@ -334,9 +335,17 @@ export default function MyPage() {
                     <CardContent className="pt-6">
                       <div className="flex flex-col items-center text-center mb-6">
                         <Avatar className="h-24 w-24 mb-4">
-                          <AvatarFallback className="text-2xl">
-                            {user?.nickname[0]}
-                          </AvatarFallback>
+                          {user?.avatar ? (
+                            <AvatarImage
+                              src={user.avatar}
+                              alt={user.nickname}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <AvatarFallback className="text-2xl">
+                              {user?.nickname[0]}
+                            </AvatarFallback>
+                          )}
                         </Avatar>
                         <h2 className="text-xl font-bold mb-1">
                           {user?.nickname}

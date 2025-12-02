@@ -42,6 +42,11 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (nickname.length < 2 || nickname.length > 8) {
+      alert("닉네임은 2~8자여야 합니다.");
+      return;
+    }
+
     if (nicknameAvailable !== true) {
       alert("닉네임 중복확인을 해주세요.");
       return;
