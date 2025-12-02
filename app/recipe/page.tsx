@@ -22,7 +22,7 @@ import {
   ChefHat,
   ChevronDown,
   ChevronUp,
-  BookmarkCheck,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/app/global/auth/useAuth";
 import {
@@ -64,7 +64,7 @@ export default function RecipePage() {
     try {
       setIsLoadingGenerated(true);
       const data = await fetchGeneratedRecipes();
-      setGeneratedRecipes(data);
+      setGeneratedRecipes(data.slice(0, 9));
     } catch (error) {
       console.error("생성된 레시피 목록 불러오기 실패:", error);
     } finally {
@@ -89,6 +89,11 @@ export default function RecipePage() {
       const data = await generateRecipes(request);
       setRecipes(data);
       setExpandedCards(new Set());
+      setQuery("");
+      setCategory("");
+      setCookingTime("");
+      setDifficulty("");
+      setServings("");
 
       // 로그인한 경우 생성된 레시피 목록 새로고침
       if (isLogin) {
@@ -149,8 +154,8 @@ export default function RecipePage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <BookmarkCheck className="h-5 w-5" />
-                    생성된 레시피
+                    <History className="h-5 w-5 text-primary" />
+                    최근 생성된 레시피
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
