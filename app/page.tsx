@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { HeroSection } from '@/components/hero-section';
 import { ServicesSection } from '@/components/services-section';
 import { LatestPostsSection } from '@/components/latest-posts-section';
@@ -10,15 +11,28 @@ import ScrollIndicator from '@/components/scroll-indicator';
 import BackgroundSlideshow from '@/components/background-slideshow';
 
 export default function Home() {
+    const router = useRouter();
+
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const prev = document.body.style.overflow;
-        // Hide body scrollbar while home is mounted so the inner main handles scrolling
         document.body.style.overflow = 'hidden';
+
+        try {
+            const stored = sessionStorage.getItem('postLoginRedirect');
+            if (stored) {
+                try {
+                    sessionStorage.removeItem('postLoginRedirect');
+                } catch (e) {}
+                router.replace(stored);
+                return () => {};
+            }
+        } catch (e) {}
+
         return () => {
             document.body.style.overflow = prev || '';
         };
-    }, []);
+    }, [router]);
     return (
         <div className="min-h-screen overflow-hidden relative">
             <BackgroundSlideshow images={['/bg-user.jpg']} />
