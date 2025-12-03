@@ -79,3 +79,67 @@ export async function updatePost(
   const json = await res.json();
   return json.data;
 }
+
+//ractionbuttons.tsx
+export async function postLike(postId: number) {
+  const res = await fetch(`${BASE_URL}/posts/${postId}/likes/like`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+    alert("좋아요 처리에 실패했습니다.");
+  }
+
+  return res.json(); // RsData 리턴
+}
+
+export async function postDislike(postId: number) {
+  const res = await fetch(`${BASE_URL}/posts/${postId}/likes/dislike`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+  }
+
+  return res.json();
+}
+
+export async function getLikeCount(postId: number) {
+  const res = await fetch(`${BASE_URL}/posts/${postId}/likes/likes`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+  }
+
+  return res.json(); // count 포함
+}
+
+export async function getDislikeCount(postId: number) {
+  const res = await fetch(`${BASE_URL}/posts/${postId}/likes/dislikes`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(error);
+  }
+
+  return res.json();
+}

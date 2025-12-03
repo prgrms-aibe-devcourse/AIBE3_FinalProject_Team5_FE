@@ -15,7 +15,6 @@ import {
   Eye,
   MessageCircle,
   Heart,
-  Share2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -33,7 +32,6 @@ export default function PostDetailFetch({ id }: { id: string }) {
   useEffect(() => {
     getPostDetail(id).then((data) => {
       setPost(data);
-      console.log("Fetched post data:", data);
       setLoading(false);
     });
   }, [id]);
@@ -42,7 +40,6 @@ export default function PostDetailFetch({ id }: { id: string }) {
     if (!post?.id) {
       return;
     }
-    console.log("Navigating to edit page for post ID:", post.id);
     router.push(`/onelife/post/${post.id}/edit`);
   };
 
@@ -59,10 +56,10 @@ export default function PostDetailFetch({ id }: { id: string }) {
       alert("게시글 삭제에 실패했습니다.");
     }
   };
+  console.log("PostDetailFetch 렌더링:", { loading, post });
 
   if (loading) return <div>로딩 중...</div>;
   if (!post) return <div>게시글을 찾을 수 없습니다.</div>;
-
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />

@@ -1,18 +1,66 @@
 import { ThumbsUp, ThumbsDown } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PostResponse } from "../../types/postResponse";
-
+import {
+  postLike,
+  postDislike,
+  getLikeCount,
+  getDislikeCount,
+} from "@/app/api/post/postapi";
 interface ReactionButtonsProps {
   post: PostResponse;
 }
 
 export default function ReactionButtons({ post }: ReactionButtonsProps) {
   const [selected, setSelected] = useState<"LIKE" | "DISLIKE" | null>(null);
+  const [likeCount, setLikeCount] = useState<number>(0);
+  const [dislikeCount, setDislikeCount] = useState<number>(0);
 
-  const handleSelect = (type: "LIKE" | "DISLIKE") => {
+  const postId = post.id;
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const likeRes = await getLikeCount(postId);
+        const dislikeRes = await getDislikeCount(postId);
+
+        setLikeCount(likeRes.data);
+        setDislikeCount(dislikeRes.data);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    fetchCounts();
+  }, [postId]);
+
+  const handleSelect = async (type: "LIKE" | "DISLIKE") => {
     setSelected(type);
-    // TODO: API 연동 (추천/비추천)
+
+    try {
+      if (type === "LIKE") {
+        const res = await postLike(postId);
+        console.log("좋아요 결과:", res);
+
+        const likeRes = await getLikeCount(postId);
+        const dislikeRes = await getDislikeCount(postId);
+
+        setLikeCount(likeRes.data);
+        setDislikeCount(dislikeRes.data);
+      } else {
+        const res = await postDislike(postId);
+        console.log("비추천 결과:", res);
+
+        const likeRes = await getLikeCount(postId);
+        const dislikeRes = await getDislikeCount(postId);
+
+        setLikeCount(likeRes.data);
+        setDislikeCount(dislikeRes.data);
+      }
+    } catch (err) {
+      console.error("Reaction error:", err);
+    }
   };
 
   return (
@@ -32,9 +80,7 @@ export default function ReactionButtons({ post }: ReactionButtonsProps) {
         >
           <ThumbsUp className="h-8 w-8" />
         </Button>
-        <span className="text-lg font-semibold text-gray-700">
-          {post.likeCount ?? 0}
-        </span>
+        <span className="text-lg font-semibold text-gray-700">{likeCount}</span>
       </div>
 
       <div className="flex flex-col items-center gap-2">
@@ -53,7 +99,7 @@ export default function ReactionButtons({ post }: ReactionButtonsProps) {
           <ThumbsDown className="h-8 w-8" />
         </Button>
         <span className="text-lg font-semibold text-gray-700">
-          {post.dislikecount ?? 0}
+          {dislikeCount}
         </span>
       </div>
     </div>
