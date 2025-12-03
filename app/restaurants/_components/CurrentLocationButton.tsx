@@ -5,10 +5,25 @@ import { MapPin } from 'lucide-react';
 
 type Props = {
     onLocated: (pos: { lat: number; lng: number }) => void;
+    currentPos?: { lat: number; lng: number } | null;
+    onPanToCurrent?: (pos: { lat: number; lng: number }) => void;
 };
 
-export default function CurrentLocationButton({ onLocated }: Props) {
+export default function CurrentLocationButton({
+    onLocated,
+    currentPos,
+    onPanToCurrent,
+}: Props) {
     const handleClick = () => {
+        if (currentPos && typeof onPanToCurrent === 'function') {
+            try {
+                onPanToCurrent(currentPos);
+            } catch (e) {
+                console.error('onPanToCurrent error', e);
+            }
+            return;
+        }
+
         if (!('geolocation' in navigator)) {
             window.alert('이 브라우저는 위치 정보를 지원하지 않습니다.');
             return;
