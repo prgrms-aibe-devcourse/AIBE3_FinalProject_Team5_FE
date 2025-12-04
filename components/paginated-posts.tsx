@@ -101,18 +101,18 @@ export default function PaginatedPosts({
                           className="rounded-full"
                         />
                         <span className="text-sm text-muted-foreground">
-                          {post.author}
+                          {post.memberNickname}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Eye className="h-4 w-4" />
-                          <span>{post.views?.toLocaleString?.()}</span>
+                          <span>{post.viewCount}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Heart className="h-4 w-4" />
-                          <span>{post.likes}</span>
+                          <span>{post.likeCount}</span>
                         </div>
                         {/* 댓글 기능은 '정보' 카테고리에서는 숨깁니다 */}
                         {post.category !== "정보" && (
