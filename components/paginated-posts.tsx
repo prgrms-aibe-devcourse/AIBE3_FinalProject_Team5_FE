@@ -1,42 +1,56 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Eye, MessageCircle, Heart, Share2, ChevronLeft, ChevronRight } from "lucide-react"
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Eye,
+  MessageCircle,
+  Heart,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
-type Post = any
+type Post = any;
 
 export default function PaginatedPosts({
   posts,
   selectedCategory,
 }: {
-  posts: Post[]
-  selectedCategory?: string
+  posts: Post[];
+  selectedCategory?: string;
 }) {
-  const perPage = 5
-  const [page, setPage] = useState(1)
+  const perPage = 5;
+  const [page, setPage] = useState(1);
 
   const filtered =
-    !selectedCategory || selectedCategory === "all" ? posts : posts.filter((p: Post) => p.category === selectedCategory)
+    !selectedCategory || selectedCategory === "all"
+      ? posts
+      : posts.filter((p: Post) => {
+          if (!selectedCategory || selectedCategory.toLowerCase() === "all") {
+            return true;
+          }
+          return p.postType?.toLowerCase() === selectedCategory.toLowerCase();
+        });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
 
-  const start = (page - 1) * perPage
-  const visible = filtered.slice(start, start + perPage)
+  const start = (page - 1) * perPage;
+  const visible = filtered.slice(start, start + perPage);
 
   useEffect(() => {
-    setPage(1)
-  }, [selectedCategory])
+    setPage(1);
+  }, [selectedCategory]);
 
   function goto(p: number) {
-    if (p < 1 || p > totalPages) return
-    setPage(p)
-    const el = document.querySelector("#onelife-posts")
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+    if (p < 1 || p > totalPages) return;
+    setPage(p);
+    const el = document.querySelector("#onelife-posts");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -49,13 +63,21 @@ export default function PaginatedPosts({
                 <div className="flex gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">{post.category}</Badge>
-                      <span className="text-sm text-muted-foreground">{post.time}</span>
+                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                        {post.category}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {post.time}
+                      </span>
                     </div>
 
-                    <h3 className="text-lg font-semibold mb-2 text-balance">{post.title}</h3>
+                    <h3 className="text-lg font-semibold mb-2 text-balance">
+                      {post.title}
+                    </h3>
 
-                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{post.excerpt}</p>
+                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                      {post.excerpt}
+                    </p>
 
                     <div className="flex flex-wrap gap-2 mb-4">
                       {post.tags?.map((tag: string, index: number) => (
@@ -68,23 +90,29 @@ export default function PaginatedPosts({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Image
-                          src={post.avatar || "/placeholder.svg" || "/placeholder.svg"}
-                          alt={post.author}
+                          src={
+                            post.avatar ||
+                            "/placeholder.svg" ||
+                            "/placeholder.svg"
+                          }
+                          alt={post.memberNickname}
                           width={24}
                           height={24}
                           className="rounded-full"
                         />
-                        <span className="text-sm text-muted-foreground">{post.author}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {post.memberNickname}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Eye className="h-4 w-4" />
-                          <span>{post.views?.toLocaleString?.()}</span>
+                          <span>{post.viewCount}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Heart className="h-4 w-4" />
-                          <span>{post.likes}</span>
+                          <span>{post.likeCount}</span>
                         </div>
                         {/* 댓글 기능은 '정보' 카테고리에서는 숨깁니다 */}
                         {post.category !== "정보" && (
@@ -151,5 +179,5 @@ export default function PaginatedPosts({
         </Button>
       </div>
     </>
-  )
+  );
 }
