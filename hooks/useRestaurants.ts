@@ -51,16 +51,40 @@ export function useRestaurants(
         async (kw = keyword, p = page) => {
             const json = await fetchRestaurants({ keyword: kw, page: p, size });
             const rawList = Array.isArray(json) ? json : [];
+            // load session-stored kakao-imported ids and exclude them from general listing
+            let kakaoImportedIds: number[] = [];
+            try {
+                const stored = JSON.parse(
+                    sessionStorage.getItem('kakaoImportedRestaurants') || '[]'
+                );
+                if (Array.isArray(stored)) {
+                    kakaoImportedIds = stored.map((v: any) => Number(v));
+                }
+            } catch (e) {
+                kakaoImportedIds = [];
+            }
+            // Filter out server-side imported kakao places from the general list
+            // unless they belong to the current user. Nearby searches still
+            // surface imported items.
             const list = (rawList as Restaurant[]).filter((r: any) => {
-                const ownerId = r?.ownerId ?? r?.memberId ?? null;
-                if (!ownerId) return true;
+                // Exclude server-side imported kakao places from the general
+                // listing. We only want user-created local entries (isLocal)
+                // to be prioritized in the general list; server-created
+                // imported places (even if owned) should not be forced into
+                // the general listing — they remain visible via nearby search.
+                const looksLikeKakao = Boolean(
+                    (r as any)?.placeUrl || (r as any)?.placeId
+                );
+                // also exclude any kakao-imported ids created during this session
+                if (looksLikeKakao) return false;
                 if (
-                    isLogin &&
-                    loginMember &&
-                    Number(ownerId) === Number(loginMember.id)
+                    (r as any)?.id &&
+                    kakaoImportedIds.includes(Number((r as any).id))
                 )
-                    return true;
-                return false;
+                    return false;
+
+                // otherwise include
+                return true;
             });
 
             const ref = userPos ?? mapCenter;
@@ -68,6 +92,11 @@ export function useRestaurants(
             if (isLogin && localAdded && localAdded.length) {
                 const existingIds = new Set(merged.map((r) => (r as any).id));
                 for (const la of localAdded) {
+                    // Only include client-local restaurants (isLocal === true)
+                    // that the user explicitly added via the UI. This prevents
+                    // server-created imported places from being promoted to
+                    // the top of the list simply because the user reviewed them.
+                    if (!((la as any).isLocal === true)) continue;
                     const ownerId =
                         (la as any).ownerId ?? (la as any).memberId ?? null;
                     if (
@@ -171,20 +200,49 @@ export function useRestaurants(
                 });
                 const merged = [...(list as Restaurant[])];
                 if (isLogin && localAdded && localAdded.length) {
+                    // Include only the user's local-added restaurants that are
+                    // actually near the requested target position. This avoids
+                    // promoting reviewed/imported restaurants that are far away
+                    // into the nearby results unexpectedly.
                     const existingIds = new Set(
                         merged.map((r) => (r as any).id)
                     );
-                    for (const la of localAdded) {
-                        const ownerId =
-                            (la as any).ownerId ?? (la as any).memberId ?? null;
-                        if (
-                            loginMember &&
-                            ownerId &&
-                            Number(ownerId) === Number(loginMember.id)
-                        ) {
-                            if (!existingIds.has((la as any).id))
-                                merged.unshift(la);
-                        }
+                    const maxDistanceMeters = 2000; // 2km default radius
+                    const mine = (localAdded || [])
+                        .filter((la) => {
+                            const ownerId =
+                                (la as any).ownerId ??
+                                (la as any).memberId ??
+                                null;
+                            return (
+                                loginMember &&
+                                ownerId &&
+                                Number(ownerId) === Number(loginMember.id)
+                            );
+                        })
+                        .map((la) => {
+                            const lat = (la as any).latitude ?? (la as any).lat;
+                            const lng =
+                                (la as any).longitude ?? (la as any).lng;
+                            return {
+                                ...la,
+                                isLocal: true,
+                                distanceMeters: distanceMeters(
+                                    target.lat,
+                                    target.lng,
+                                    Number(lat),
+                                    Number(lng)
+                                ),
+                            } as Restaurant & { distanceMeters?: number };
+                        })
+                        .filter(
+                            (it) =>
+                                Number(it.distanceMeters) <= maxDistanceMeters
+                        );
+
+                    for (const la of mine) {
+                        if (!existingIds.has((la as any).id))
+                            merged.unshift(la);
                     }
                 }
                 merged.forEach((r) => {
@@ -225,17 +283,40 @@ export function useRestaurants(
                     ];
 
                     if (isLogin && localAdded && localAdded.length) {
-                        const mine = localAdded.filter((la) => {
-                            const ownerId =
-                                (la as any).ownerId ??
-                                (la as any).memberId ??
-                                null;
-                            return (
-                                loginMember &&
-                                ownerId &&
-                                Number(ownerId) === Number(loginMember.id)
+                        const maxDistanceMeters = 2000; // 2km
+                        const mine = (localAdded || [])
+                            .filter((la) => {
+                                const ownerId =
+                                    (la as any).ownerId ??
+                                    (la as any).memberId ??
+                                    null;
+                                return (
+                                    loginMember &&
+                                    ownerId &&
+                                    Number(ownerId) === Number(loginMember.id)
+                                );
+                            })
+                            .map((la) => {
+                                const lat =
+                                    (la as any).latitude ?? (la as any).lat;
+                                const lng =
+                                    (la as any).longitude ?? (la as any).lng;
+                                return {
+                                    ...la,
+                                    distanceMeters: distanceMeters(
+                                        target.lat,
+                                        target.lng,
+                                        Number(lat),
+                                        Number(lng)
+                                    ),
+                                } as Restaurant & { distanceMeters?: number };
+                            })
+                            .filter(
+                                (it) =>
+                                    Number(it.distanceMeters) <=
+                                    maxDistanceMeters
                             );
-                        });
+
                         if (mine.length) {
                             return [
                                 ...baseList,
@@ -411,7 +492,12 @@ export function useRestaurants(
                                                     (la as any).longitude ??
                                                         (la as any).lng
                                                 ),
-                                            }));
+                                            }))
+                                            .filter(
+                                                (it) =>
+                                                    Number(it.distanceMeters) <=
+                                                    Math.max(0, radiusMeters)
+                                            );
 
                                         const keyed = new Map<string, any>();
                                         const keyOf = (it: any) =>
@@ -446,6 +532,14 @@ export function useRestaurants(
                                 console.debug(
                                     '[useRestaurants] kakaoSearchNearby set results',
                                     { count: mergedResults.length }
+                                );
+                                // Ensure results are sorted by distance so the
+                                // nearest restaurants are shown first regardless
+                                // of insertion order during merging.
+                                mergedResults.sort(
+                                    (a: any, b: any) =>
+                                        (a.distanceMeters ?? 0) -
+                                        (b.distanceMeters ?? 0)
                                 );
                                 setNearbyUsingKakao(true);
                                 setAllResults(mergedResults);

@@ -39,13 +39,43 @@ export default function ReviewsPage() {
                 if (raw) {
                     try {
                         const parsed = JSON.parse(raw);
-                        setRestaurantInfo(parsed as Restaurant);
-                        // don't remove; keep for possible back-nav
+                        const parsedId = Number(
+                            parsed && parsed.id ? parsed.id : NaN
+                        );
+
+                        if (
+                            Number.isFinite(parsedId) &&
+                            Number.isFinite(id) &&
+                            parsedId === id
+                        ) {
+                            setRestaurantInfo(parsed as Restaurant);
+                        } else if (!Number.isFinite(id) || Number.isNaN(id)) {
+                            setRestaurantInfo(parsed as Restaurant);
+                        } else {
+                            try {
+                                const fetched = await fetchRestaurantById(id);
+                                setRestaurantInfo(fetched);
+                            } catch (e) {
+                                console.error(
+                                    'fetchRestaurantById (mismatch fallback) failed',
+                                    e
+                                );
+
+                                setRestaurantInfo(parsed as Restaurant);
+                            }
+                        }
                     } catch (e) {
                         console.error('parse selectedRestaurant', e);
 
-                        const fetched = await fetchRestaurantById(id);
-                        setRestaurantInfo(fetched);
+                        try {
+                            const fetched = await fetchRestaurantById(id);
+                            setRestaurantInfo(fetched);
+                        } catch (ef) {
+                            console.error(
+                                'fetchRestaurantById fallback failed',
+                                ef
+                            );
+                        }
                     }
                 } else {
                     try {
@@ -64,7 +94,6 @@ export default function ReviewsPage() {
             await load();
         }
         init();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
 
     async function load() {
@@ -117,11 +146,78 @@ export default function ReviewsPage() {
             return;
         }
         try {
+            console.debug(
+                '[reviews:onSubmit] routeId=',
+                id,
+                'restaurantInfo.id=',
+                restaurantInfo?.id,
+                'useId=',
+                useId,
+                'rating=',
+                rating
+            );
             setLoading(true);
             await createReview(useId, { rating, content });
+            console.debug(
+                '[reviews:onSubmit] createReview succeeded for useId=',
+                useId
+            );
+
+            try {
+                const refreshed = await fetchRestaurantById(useId);
+                setRestaurantInfo(refreshed as Restaurant);
+                try {
+                    const payload = {
+                        id: refreshed.id,
+                        name: refreshed.name,
+                        roadAddress: refreshed.roadAddress,
+                        jibunAddress: refreshed.jibunAddress,
+                        image: refreshed.image,
+                        phone: refreshed.phone,
+                        averageRating: refreshed.averageRating,
+                        reviewCount: refreshed.reviewCount,
+                        latitude: refreshed.latitude,
+                        longitude: refreshed.longitude,
+                        placeUrl:
+                            (refreshed as any).placeUrl ||
+                            (restaurantInfo as any)?.placeUrl,
+                    };
+                    sessionStorage.setItem(
+                        'selectedRestaurant',
+                        JSON.stringify(payload)
+                    );
+                } catch (e) {
+                    console.error(
+                        'store selectedRestaurant after review create',
+                        e
+                    );
+                }
+            } catch (e) {
+                console.error(
+                    'refresh restaurant after review create failed',
+                    e
+                );
+            }
             setContent('');
             setRating(5);
             await load();
+
+            try {
+                const key = 'myReviewedRestaurants';
+                const raw = sessionStorage.getItem(key) || '[]';
+                const arr = JSON.parse(raw);
+                const next = Array.isArray(arr) ? arr.slice() : [];
+                const rid = Number(useId);
+                if (!next.includes(rid)) {
+                    next.push(rid);
+                    sessionStorage.setItem(key, JSON.stringify(next));
+                }
+            } catch (e) {
+                console.error('store myReviewedRestaurants failed', e);
+            }
+            try {
+                router.replace(`/restaurants/${useId}/reviews`);
+            } catch (e) {}
         } catch (err) {
             console.error('create review failed', err);
 
@@ -168,8 +264,34 @@ export default function ReviewsPage() {
                             payload as any,
                             { asImported: true }
                         );
+                        try {
+                            const key = 'kakaoImportedRestaurants';
+                            const stored = JSON.parse(
+                                sessionStorage.getItem(key) || '[]'
+                            );
+                            if (Array.isArray(stored)) {
+                                stored.push(Number((created as any).id));
+                                sessionStorage.setItem(
+                                    key,
+                                    JSON.stringify(stored)
+                                );
+                            } else {
+                                sessionStorage.setItem(
+                                    key,
+                                    JSON.stringify([
+                                        Number((created as any).id),
+                                    ])
+                                );
+                            }
+                        } catch (e) {
+                            console.error('store kakaoImportedRestaurants', e);
+                        }
                         if (created && (created as any).id) {
                             const createdId = Number((created as any).id);
+                            console.debug(
+                                '[reviews:onSubmit] recovery created restaurant id=',
+                                createdId
+                            );
                             await createReview(createdId, {
                                 rating,
                                 content,
@@ -213,8 +335,34 @@ export default function ReviewsPage() {
                                 );
                             }
 
+                            try {
+                                const key = 'myReviewedRestaurants';
+                                const raw = sessionStorage.getItem(key) || '[]';
+                                const arr = JSON.parse(raw);
+                                const next = Array.isArray(arr)
+                                    ? arr.slice()
+                                    : [];
+                                if (!next.includes(createdId)) {
+                                    next.push(createdId);
+                                    sessionStorage.setItem(
+                                        key,
+                                        JSON.stringify(next)
+                                    );
+                                }
+                            } catch (e) {
+                                console.error(
+                                    'store myReviewedRestaurants (recovery) failed',
+                                    e
+                                );
+                            }
+
                             setContent('');
                             setRating(5);
+                            try {
+                                router.replace(
+                                    `/restaurants/${createdId}/reviews`
+                                );
+                            } catch (e) {}
                             return;
                         }
                     } catch (e2) {
@@ -299,7 +447,7 @@ export default function ReviewsPage() {
                         <select
                             value={rating}
                             onChange={(e) => setRating(Number(e.target.value))}
-                            className="mt-1"
+                            className="mt-1 cursor-pointer"
                         >
                             {[5, 4, 3, 2, 1].map((v) => (
                                 <option key={v} value={v}>
@@ -320,7 +468,7 @@ export default function ReviewsPage() {
                     <div>
                         <button
                             type="submit"
-                            className="px-3 py-2 bg-primary text-white rounded"
+                            className="px-3 py-2 bg-primary text-white rounded cursor-pointer"
                             disabled={loading}
                         >
                             작성
@@ -363,7 +511,7 @@ export default function ReviewsPage() {
                                     Number(r.memberId) ? (
                                     <button
                                         onClick={() => onDelete(r.id)}
-                                        className="text-sm text-red-600"
+                                        className="text-sm text-red-600 cursor-pointer"
                                     >
                                         삭제
                                     </button>
