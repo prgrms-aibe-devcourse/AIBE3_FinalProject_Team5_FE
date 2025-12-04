@@ -1,8 +1,8 @@
 "use client";
 
 import type React from "react";
-
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -17,52 +23,96 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, ImagePlus, X } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
+import { useAuth } from "@/app/global/auth/useAuth";
+import { createGroupBuyingPost } from "@/lib/api/groupBuyingApi";
+import {
+  GROUP_BUYING_CATEGORIES,
+  GroupBuyingCategory,
+} from "@/types/groupBuying";
 
 export default function GroupBuyingWritePage() {
+  const router = useRouter();
+  const { isLogin } = useAuth();
+
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState<GroupBuyingCategory>("food");
   const [content, setContent] = useState("");
   const [targetPeople, setTargetPeople] = useState("");
   const [deadline, setDeadline] = useState<Date>();
-  const [location, setLocation] = useState("");
+  const [region, setRegion] = useState("");
   const [amount, setAmount] = useState("");
-  const [images, setImages] = useState<string[]>([]);
+  const [chatRoomName, setChatRoomName] = useState("");
+  const [chatRoomDescription, setChatRoomDescription] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newImages: string[] = [];
-      Array.from(files).forEach((file) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            setImages((prev) => [...prev, ...newImages]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    alert("공동구매 모집글이 등록되었습니다!");
+
+    if (!isLogin) {
+      alert("로그인이 필요한 기능입니다.");
+      router.push("/login");
+      return;
+    }
+
+    if (!deadline) {
+      alert("마감일을 선택해주세요.");
+      return;
+    }
+
+    const targetAmount = Number(amount);
+    const targetParticipants = Number(targetPeople);
+
+    if (isNaN(targetAmount) || targetAmount <= 0) {
+      alert("올바른 금액을 입력해주세요.");
+      return;
+    }
+
+    if (isNaN(targetParticipants) || targetParticipants < 2) {
+      alert("모집 인원은 최소 2명 이상이어야 합니다.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      console.log("선택된 카테고리:", category);
+      console.log("카테고리 한글명:", GROUP_BUYING_CATEGORIES[category]);
+
+      // 마감일에 시간 추가 (23:59:59)
+      const deadlineWithTime = new Date(deadline);
+      deadlineWithTime.setHours(23, 59, 59, 999);
+
+      const requestData = {
+        title: title.trim(),
+        category: category,
+        content: content.trim(),
+        targetAmount,
+        targetParticipants,
+        deadline: deadlineWithTime.toISOString(),
+        region: region.trim(),
+        chatRoomName: chatRoomName.trim() || title.trim(),
+        chatRoomDescription: chatRoomDescription.trim() || content.trim(),
+        chatRoomMaxParticipants: targetParticipants,
+      };
+
+      console.log("전송할 데이터:", requestData);
+
+      const createdPost = await createGroupBuyingPost(requestData);
+
+      console.log("생성된 게시글:", createdPost);
+
+      alert("공동구매 모집글이 등록되었습니다!");
+      router.push(`/group-buying/${createdPost.id}`);
+    } catch (error: any) {
+      console.error("등록 실패:", error);
+      alert(error.message || "등록에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -81,10 +131,7 @@ export default function GroupBuyingWritePage() {
                 로컬 커뮤니티
               </Link>
               <span>/</span>
-              <Link
-                href="/local/group-buying"
-                className="hover:text-foreground"
-              >
+              <Link href="/group-buying" className="hover:text-foreground">
                 공동구매
               </Link>
               <span>/</span>
@@ -100,24 +147,6 @@ export default function GroupBuyingWritePage() {
           <Card>
             <CardContent className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Category */}
-                <div className="space-y-2">
-                  <Label htmlFor="category">카테고리 *</Label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="카테고리를 선택하세요" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="food">식품</SelectItem>
-                      <SelectItem value="living">생활용품</SelectItem>
-                      <SelectItem value="electronics">전자제품</SelectItem>
-                      <SelectItem value="fashion">패션/의류</SelectItem>
-                      <SelectItem value="beauty">뷰티/화장품</SelectItem>
-                      <SelectItem value="etc">기타</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Title */}
                 <div className="space-y-2">
                   <Label htmlFor="title">제목 *</Label>
@@ -130,24 +159,52 @@ export default function GroupBuyingWritePage() {
                   />
                 </div>
 
-                {/* Location and Amount Row */}
+                {/* 카테고리 선택 */}
+                <div className="space-y-2">
+                  <Label htmlFor="category">카테고리 *</Label>
+                  <Select
+                    value={category}
+                    onValueChange={(value) => {
+                      setCategory(value as GroupBuyingCategory);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="카테고리를 선택하세요" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(GROUP_BUYING_CATEGORIES).map(
+                        ([key, label]) => (
+                          <SelectItem key={key} value={key}>
+                            {label}
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {/* 현재 선택된 카테고리 표시 */}
+                  <p className="text-xs text-muted-foreground">
+                    현재 선택: {GROUP_BUYING_CATEGORIES[category]} ({category})
+                  </p>
+                </div>
+
+                {/* Region and Amount Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="location">거래 지역 *</Label>
+                    <Label htmlFor="region">거래 지역 *</Label>
                     <Input
-                      id="location"
+                      id="region"
                       placeholder="예: 강남구"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="amount">금액 (1인당) *</Label>
+                    <Label htmlFor="amount">목표 금액 *</Label>
                     <Input
                       id="amount"
                       type="number"
-                      placeholder="예: 15000"
+                      placeholder="예: 100000"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                       required
@@ -166,6 +223,7 @@ export default function GroupBuyingWritePage() {
                       value={targetPeople}
                       onChange={(e) => setTargetPeople(e.target.value)}
                       required
+                      min="2"
                     />
                   </div>
                   <div className="space-y-2">
@@ -191,6 +249,7 @@ export default function GroupBuyingWritePage() {
                           onSelect={setDeadline}
                           initialFocus
                           locale={ko}
+                          disabled={(date) => date < new Date()}
                         />
                       </PopoverContent>
                     </Popover>
@@ -210,65 +269,24 @@ export default function GroupBuyingWritePage() {
                   />
                 </div>
 
-                {/* Image Upload */}
-                <div className="space-y-2">
-                  <Label>사진 첨부 (선택)</Label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input
-                      type="file"
-                      id="image-upload"
-                      className="hidden"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                    />
-                    <label htmlFor="image-upload" className="cursor-pointer">
-                      <ImagePlus className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        클릭하여 사진을 업로드하세요
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        최대 10장까지 가능
-                      </p>
-                    </label>
-                  </div>
-
-                  {/* Image Preview Grid */}
-                  {images.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
-                      {images.map((image, index) => (
-                        <div key={index} className="relative group">
-                          <img
-                            src={image || "/placeholder.svg"}
-                            alt={`Upload ${index + 1}`}
-                            className="w-full h-32 object-cover rounded-lg"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(index)}
-                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* Buttons */}
                 <div className="flex gap-4 pt-4">
-                  <Link href="/local/group-buying" className="flex-1">
+                  <Link href="/group-buying" className="flex-1">
                     <Button
                       type="button"
                       variant="outline"
                       className="w-full bg-transparent"
+                      disabled={isSubmitting}
                     >
                       취소
                     </Button>
                   </Link>
-                  <Button type="submit" className="flex-1">
-                    등록하기
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "등록 중..." : "등록하기"}
                   </Button>
                 </div>
               </form>

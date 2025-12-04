@@ -10,6 +10,7 @@ import {
   fetchChatMessages,
   leaveChatRoom,
   fetchChatParticipants,
+  kickParticipant,
   ChatParticipant,
 } from "@/lib/api/chatApi";
 import { MessageType } from "@/types/chat";
@@ -20,7 +21,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft,
   Users,
@@ -28,6 +28,7 @@ import {
   Calendar,
   Send,
   MoreVertical,
+  UserX,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -55,11 +56,9 @@ export default function GroupChatPage({
     setCurrentChatRoom,
     messages,
     addMessage,
-    setMessages,
     clearMessages,
   } = useChatStore();
 
-  // 로그인 체크
   useEffect(() => {
     if (!isLogin || !loginMember) {
       alert("로그인이 필요한 기능입니다.");
@@ -68,7 +67,6 @@ export default function GroupChatPage({
     }
   }, [isLogin, loginMember, router]);
 
-  // 채팅방 데이터 로드
   useEffect(() => {
     if (!isLogin || !loginMember || isInitialized.current) {
       return;
@@ -79,7 +77,6 @@ export default function GroupChatPage({
 
     loadChatRoomData();
 
-    // 클린업 함수
     return () => {
       console.log("채팅방 클린업");
       if (wsClient.current) {
@@ -91,7 +88,6 @@ export default function GroupChatPage({
     };
   }, [chatRoomId, isLogin, loginMember]);
 
-  // 자동 스크롤 - 채팅 컨테이너만 스크롤
   useEffect(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop =
@@ -99,34 +95,23 @@ export default function GroupChatPage({
     }
   }, [messages]);
 
-  // 쿠키 기반 - 채팅방 데이터 로드
   const loadChatRoomData = async () => {
     try {
-      console.log("📡 채팅방 데이터 로드 시작:", chatRoomId);
-
-      // 1. 채팅방 정보 조회
       const room = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(room);
-      console.log("채팅방 정보:", room);
 
-      // 2. 이전 메시지 불러오기
       const previousMessages = await fetchChatMessages(chatRoomId);
-      console.log("이전 메시지:", previousMessages.length, "개");
-
-      // clearMessages 후 새로운 메시지 설정
       clearMessages();
       previousMessages.forEach((msg) => addMessage(msg));
 
-      // 3. 참여자 목록 불러오기
       try {
         const participantsList = await fetchChatParticipants(chatRoomId);
+        console.log("✅ 초기 참여자 목록:", participantsList);
         setParticipants(participantsList);
-        console.log("참여자 목록 로드:", participantsList);
       } catch (error) {
         console.error("참여자 목록 로드 실패:", error);
       }
 
-      // 4. WebSocket 연결
       if (wsClient.current) {
         wsClient.current.disconnect();
       }
@@ -141,7 +126,6 @@ export default function GroupChatPage({
   const connectWebSocket = () => {
     if (!loginMember) return;
 
-    console.log("WebSocket 연결 시작");
     wsClient.current = new ChatWebSocketClient(
       loginMember.id,
       loginMember.nickname
@@ -150,32 +134,54 @@ export default function GroupChatPage({
     wsClient.current.connect(
       chatRoomId,
       (msg) => {
-        console.log("새 메시지:", msg);
+        console.log("📨 새 메시지 수신:", msg);
         addMessage(msg);
 
-        // 입장/퇴장 메시지 시 참여자 목록 + 채팅방 정보 실시간 갱신
-        if (msg.type === MessageType.ENTER || msg.type === MessageType.LEAVE) {
-          console.log("참여자 변동 감지 - 목록 갱신 중...");
+        // 메시지 타입을 문자열로 변환 (enum 비교 문제 방지)
+        const messageType = String(msg.type);
+        console.log("📝 메시지 타입:", messageType);
 
-          // 쿠키 기반 - 참여자 목록 갱신
-          fetchChatParticipants(chatRoomId)
-            .then((list) => {
-              setParticipants(list);
-              console.log("✅ 참여자 목록 갱신 완료:", list);
-            })
-            .catch((error) =>
-              console.error("❌ 참여자 목록 갱신 실패:", error)
-            );
+        // 입장/퇴장/강퇴 메시지 시 참여자 목록 갱신
+        if (
+          messageType === "ENTER" ||
+          messageType === "LEAVE" ||
+          messageType === "KICK"
+        ) {
+          console.log("🔄 참여자 변동 감지:", messageType);
 
-          // 쿠키 기반 - 채팅방 정보 갱신
+          // 참여자 목록 갱신
+          setTimeout(() => {
+            fetchChatParticipants(chatRoomId)
+              .then((list) => {
+                console.log("✅ 참여자 목록 갱신:", list);
+                setParticipants(list);
+              })
+              .catch((error) => {
+                console.error("❌ 참여자 갱신 실패:", error);
+              });
+          }, 100); // 100ms 지연으로 백엔드 처리 대기
+
+          // 채팅방 정보 갱신
           fetchChatRoom(chatRoomId)
             .then((updatedRoom) => {
+              console.log("✅ 채팅방 정보 갱신:", updatedRoom);
               setCurrentChatRoom(updatedRoom);
-              console.log("✅ 채팅방 정보 갱신 완료:", updatedRoom);
             })
-            .catch((error) =>
-              console.error("❌ 채팅방 정보 갱신 실패:", error)
-            );
+            .catch((error) => {
+              console.error("❌ 채팅방 갱신 실패:", error);
+            });
+
+          // 내가 강퇴당한 경우
+          if (messageType === "KICK" && msg.senderId === loginMember.id) {
+            console.log("🚫 본인이 강퇴당함");
+            alert("채팅방에서 강퇴되었습니다.");
+            if (wsClient.current) {
+              wsClient.current.disconnect();
+            }
+            clearMessages();
+            setCurrentChatRoom(null);
+            router.push("/groups");
+          }
         }
       },
       () => {
@@ -193,7 +199,7 @@ export default function GroupChatPage({
     }
 
     if (!wsClient.current || !wsClient.current.isConnected()) {
-      alert("채팅 서버에 연결 중입니다. 잠시 후 다시 시도해주세요.");
+      alert("채팅 서버에 연결 중입니다.");
       return;
     }
 
@@ -206,7 +212,30 @@ export default function GroupChatPage({
     setMessage("");
   };
 
-  // 쿠키 기반 - 나가기
+  // 참여자 강퇴
+  const handleKickParticipant = async (
+    targetMemberId: number,
+    nickname: string
+  ) => {
+    if (!loginMember || !currentChatRoom) return;
+
+    if (loginMember.id !== currentChatRoom.creatorId) {
+      alert("방장만 참여자를 강퇴할 수 있습니다.");
+      return;
+    }
+
+    if (!confirm(`${nickname}님을 강퇴하시겠습니까?`)) return;
+
+    try {
+      console.log("🚫 강퇴 시작:", nickname, targetMemberId);
+      await kickParticipant(chatRoomId, targetMemberId);
+      console.log("✅ 강퇴 API 성공");
+    } catch (error: any) {
+      console.error("❌ 강퇴 실패:", error);
+      alert(error.message || "강퇴에 실패했습니다.");
+    }
+  };
+
   const handleLeave = async () => {
     if (!currentChatRoom) return;
 
@@ -226,31 +255,19 @@ export default function GroupChatPage({
     if (!confirm(confirmMessage)) return;
 
     try {
-      console.log("🚪 채팅방 나가기 시작...");
-
-      // 1. WebSocket 연결 해제
       if (wsClient.current) {
         wsClient.current.disconnect();
-        console.log("✅ WebSocket 연결 해제");
       }
 
-      // 2. 백엔드 API 호출 (쿠키 기반)
       await leaveChatRoom(chatRoomId);
-      console.log("✅ 백엔드 퇴장 처리 완료");
-
-      // 3. 상태 초기화
       clearMessages();
       setCurrentChatRoom(null);
-
-      // 4. 목록 페이지로 이동
       router.push("/groups");
       router.refresh();
-      console.log("✅ 채팅방 나가기 완료");
     } catch (error: any) {
       console.error("❌ 나가기 실패:", error);
 
       if (error.message?.includes("존재하지 않는") || error.status === 404) {
-        console.log("ℹ️ 채팅방이 이미 삭제되었습니다.");
         clearMessages();
         setCurrentChatRoom(null);
         router.push("/groups");
@@ -277,13 +294,14 @@ export default function GroupChatPage({
     );
   }
 
+  const isCreator = loginMember.id === currentChatRoom.creatorId;
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
       <main className="flex-1 py-4 md:py-8">
         <div className="container mx-auto px-4">
-          {/* Back Button */}
           <Link
             href="/groups"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
@@ -292,12 +310,10 @@ export default function GroupChatPage({
             소모임 목록으로 돌아가기
           </Link>
 
-          {/* 채팅 영역 */}
           <div className="grid lg:grid-cols-4 gap-4">
             {/* Chat Area */}
             <div className="lg:col-span-3">
               <Card className="flex flex-col h-[calc(100vh-250px)]">
-                {/* Header */}
                 <CardHeader className="border-b shrink-0">
                   <div className="flex items-center justify-between">
                     <div>
@@ -314,12 +330,10 @@ export default function GroupChatPage({
                   </div>
                 </CardHeader>
 
-                {/* Messages */}
                 <CardContent
                   ref={messagesContainerRef}
                   className="flex-1 overflow-y-auto p-4 space-y-4"
                 >
-                  {/* 환영 메시지 */}
                   <div className="flex justify-center items-center py-8">
                     <div className="text-center space-y-3">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
@@ -348,7 +362,6 @@ export default function GroupChatPage({
                     </div>
                   </div>
 
-                  {/* 메시지 목록 */}
                   {messages.length === 0 ? (
                     <div className="flex justify-center items-center py-4">
                       <p className="text-sm text-muted-foreground">
@@ -357,7 +370,6 @@ export default function GroupChatPage({
                     </div>
                   ) : (
                     <>
-                      {/* 메시지를 시간순으로 정렬 (오래된 것 위 → 최신 것 아래) */}
                       {[...messages]
                         .sort(
                           (a, b) =>
@@ -368,9 +380,13 @@ export default function GroupChatPage({
                           const isMyMessage = loginMember
                             ? msg.senderId === loginMember.id
                             : false;
+
+                          // 문자열로 비교
+                          const msgType = String(msg.type);
                           const isSystemMessage =
-                            msg.type === MessageType.ENTER ||
-                            msg.type === MessageType.LEAVE;
+                            msgType === "ENTER" ||
+                            msgType === "LEAVE" ||
+                            msgType === "KICK";
 
                           const uniqueKey = msg.id
                             ? `msg-${msg.id}`
@@ -378,21 +394,26 @@ export default function GroupChatPage({
                                 msg.createdAt
                               }-${msg.content.substring(0, 10)}`;
 
-                          // 시스템 메시지
                           if (isSystemMessage) {
                             return (
                               <div
                                 key={uniqueKey}
                                 className="flex justify-center"
                               >
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge
+                                  variant={
+                                    msgType === "KICK"
+                                      ? "destructive"
+                                      : "secondary"
+                                  }
+                                  className="text-xs"
+                                >
                                   {msg.content}
                                 </Badge>
                               </div>
                             );
                           }
 
-                          // 일반 메시지
                           return (
                             <div
                               key={uniqueKey}
@@ -443,7 +464,6 @@ export default function GroupChatPage({
                   )}
                 </CardContent>
 
-                {/* Input */}
                 <div className="border-t p-4 shrink-0">
                   <form onSubmit={handleSendMessage} className="flex gap-2">
                     <Input
@@ -472,7 +492,6 @@ export default function GroupChatPage({
 
             {/* Sidebar */}
             <div className="lg:col-span-1 space-y-4">
-              {/* Room Info */}
               <Card>
                 <CardHeader>
                   <h3 className="font-semibold">소모임 정보</h3>
@@ -513,7 +532,6 @@ export default function GroupChatPage({
                 </CardContent>
               </Card>
 
-              {/* Participants */}
               <Card>
                 <CardHeader>
                   <h3 className="font-semibold">
@@ -527,7 +545,6 @@ export default function GroupChatPage({
                     </p>
                   ) : (
                     participants.map((participant) => {
-                      // ✅ null 체크 추가
                       const isMe = loginMember
                         ? participant.memberId === loginMember.id
                         : false;
@@ -558,6 +575,23 @@ export default function GroupChatPage({
                               )}
                             </div>
                           </div>
+                          {/* 강퇴 버튼 */}
+                          {isCreator && !isMe && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() =>
+                                handleKickParticipant(
+                                  participant.memberId,
+                                  participant.nickname
+                                )
+                              }
+                              title="강퇴"
+                            >
+                              <UserX className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       );
                     })
@@ -565,7 +599,6 @@ export default function GroupChatPage({
                 </CardContent>
               </Card>
 
-              {/* Leave Button */}
               <Button
                 variant="outline"
                 className="w-full"
