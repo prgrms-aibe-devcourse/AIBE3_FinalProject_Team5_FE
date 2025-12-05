@@ -7,6 +7,7 @@ export enum MessageType {
   ENTER = "ENTER",
   TALK = "TALK",
   LEAVE = "LEAVE",
+  KICK = "KICK",
 }
 
 export interface ChatRoom {
@@ -29,6 +30,7 @@ export interface ChatMessage {
   senderNickname: string;
   type: MessageType;
   content: string;
+  targetMemberId?: number;
   createdAt: string;
 }
 
