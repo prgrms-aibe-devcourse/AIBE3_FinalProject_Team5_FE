@@ -8,12 +8,14 @@ import { distanceMeters, formatDistance } from '@/lib/geo';
 type Props = {
     restaurants: Restaurant[];
     userPos?: { lat: number; lng: number } | null;
+    originPos?: { lat: number; lng: number } | null;
     onItemClick?: (r: Restaurant) => void;
 };
 
 export default function RestaurantsList({
     restaurants,
     userPos,
+    originPos,
     onItemClick,
 }: Props) {
     return (
@@ -29,6 +31,15 @@ export default function RestaurantsList({
                 const distanceStr =
                     typeof distMetersFromApi === 'number'
                         ? formatDistance(distMetersFromApi)
+                        : originPos
+                        ? formatDistance(
+                              distanceMeters(
+                                  originPos.lat,
+                                  originPos.lng,
+                                  lat,
+                                  lng
+                              )
+                          )
                         : userPos
                         ? formatDistance(
                               distanceMeters(userPos.lat, userPos.lng, lat, lng)

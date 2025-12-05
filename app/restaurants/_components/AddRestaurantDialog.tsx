@@ -20,12 +20,10 @@ import type { Restaurant } from '@/lib/restaurants';
 type Props = {
     lastClicked: { lat: number; lng: number } | null;
     onSuccess: (created: Restaurant) => void;
-    // optional controlled editing mode
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     initialData?: Restaurant | null;
     mode?: 'create' | 'edit';
-    // when in edit mode for local items, call this instead of creating
     onUpdate?: (updated: Restaurant) => void;
     onRequestMapPick?: () => void;
 };
@@ -283,7 +281,17 @@ export default function AddRestaurantDialog({
                         size="sm"
                         className="cursor-pointer"
                         onClick={() => {
-                            router.push('/login');
+                            try {
+                                sessionStorage.setItem(
+                                    'postLoginRedirect',
+                                    '/restaurants'
+                                );
+                            } catch (e) {}
+                            router.push(
+                                `/login?next=${encodeURIComponent(
+                                    '/restaurants'
+                                )}`
+                            );
                         }}
                     >
                         식당 추가

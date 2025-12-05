@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/app/global/auth/useAuth';
+import { fetchRestaurantById } from '@/lib/restaurants';
+import { Button } from '@/components/ui/button';
 import { Header } from '@/components/header';
 import SearchBar from './_components/SearchBar';
 import CurrentLocationButton from './_components/CurrentLocationButton';
@@ -59,22 +63,116 @@ export default function RestaurantsView() {
         initialData?: Restaurant | null;
     } | null>(null);
 
+    const [showReviewedOnly, setShowReviewedOnly] = useState(false);
+    const router = useRouter();
+    const { isLogin } = useAuth();
+
+    const [reviewedRestaurants, setReviewedRestaurants] = useState<
+        Restaurant[] | null
+    >(null);
+    const reviewedFullRef = useRef<Restaurant[] | null>(null);
+
+    const distanceSq = (
+        lat1: number,
+        lng1: number,
+        lat2: number,
+        lng2: number
+    ) => {
+        const dLat = lat1 - lat2;
+        const dLng = lng1 - lng2;
+        return dLat * dLat + dLng * dLng;
+    };
+
+    const sortByLastClicked = (arr: Restaurant[] | null) => {
+        if (!arr || !lastClicked) return arr || [];
+        const lat = Number(lastClicked.lat);
+        const lng = Number(lastClicked.lng);
+        return arr.slice().sort((a, b) => {
+            try {
+                const aLat = Number(
+                    (a as any).latitude ?? (a as any).lat ?? NaN
+                );
+                const aLng = Number(
+                    (a as any).longitude ?? (a as any).lng ?? NaN
+                );
+                const bLat = Number(
+                    (b as any).latitude ?? (b as any).lat ?? NaN
+                );
+                const bLng = Number(
+                    (b as any).longitude ?? (b as any).lng ?? NaN
+                );
+                if (!Number.isFinite(aLat) || !Number.isFinite(aLng)) return 1;
+                if (!Number.isFinite(bLat) || !Number.isFinite(bLng)) return -1;
+                return (
+                    distanceSq(aLat, aLng, lat, lng) -
+                    distanceSq(bLat, bLng, lat, lng)
+                );
+            } catch (e) {
+                return 0;
+            }
+        });
+    };
+
     const handleItemClick = (r: Restaurant) => {
         try {
-            const rLat = Number((r as any).latitude ?? (r as any).lat ?? 0);
-            const rLng = Number((r as any).longitude ?? (r as any).lng ?? 0);
+            const rLat = Number((r as any).latitude ?? (r as any).lat ?? NaN);
+            const rLng = Number((r as any).longitude ?? (r as any).lng ?? NaN);
+            const rId =
+                (r as any)?.id !== undefined && (r as any)?.id !== null
+                    ? String((r as any).id)
+                    : null;
+            const rName = ((r as any)?.name || '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            const rPlaceUrl =
+                (r as any)?.placeUrl || (r as any)?.placeId || null;
+
+            if (rId) {
+                const byId = (allResults || []).find(
+                    (it) =>
+                        (it as any).id !== undefined &&
+                        String((it as any).id) === rId
+                );
+                if (byId) {
+                    setSelected(byId as Restaurant);
+                    hookHandleItemClick(byId as Restaurant);
+                    return;
+                }
+            }
 
             const localMatch = (localAdded || []).find((it) => {
-                const itLat = Number(
-                    (it as any).latitude ?? (it as any).lat ?? 0
-                );
-                const itLng = Number(
-                    (it as any).longitude ?? (it as any).lng ?? 0
-                );
-                return (
-                    Math.abs(itLat - rLat) < 1e-6 &&
-                    Math.abs(itLng - rLng) < 1e-6
-                );
+                try {
+                    const itId =
+                        (it as any)?.id !== undefined &&
+                        (it as any)?.id !== null
+                            ? String((it as any).id)
+                            : null;
+                    const itLat = Number(
+                        (it as any).latitude ?? (it as any).lat ?? NaN
+                    );
+                    const itLng = Number(
+                        (it as any).longitude ?? (it as any).lng ?? NaN
+                    );
+                    const itName = ((it as any)?.name || '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
+                    if (itId && rId && itId === rId) return true;
+                    if (
+                        Number.isFinite(itLat) &&
+                        Number.isFinite(itLng) &&
+                        Number.isFinite(rLat) &&
+                        Number.isFinite(rLng)
+                    ) {
+                        const sameCoords =
+                            Math.abs(itLat - rLat) < 1e-6 &&
+                            Math.abs(itLng - rLng) < 1e-6;
+                        if (sameCoords && itName && rName && itName === rName)
+                            return true;
+                    }
+                } catch (e) {}
+                return false;
             });
             if (localMatch) {
                 const augmented = {
@@ -86,12 +184,12 @@ export default function RestaurantsView() {
                 return;
             }
 
-            if (lastClicked) {
+            if (lastClicked && Number.isFinite(rLat) && Number.isFinite(rLng)) {
                 const lcLat = Number(lastClicked.lat);
                 const lcLng = Number(lastClicked.lng);
                 if (
-                    Math.abs(lcLat - rLat) < 1e-4 &&
-                    Math.abs(lcLng - rLng) < 1e-4
+                    Math.abs(lcLat - rLat) < 1e-6 &&
+                    Math.abs(lcLng - rLng) < 1e-6
                 ) {
                     const augmented = {
                         ...(r as any),
@@ -104,30 +202,44 @@ export default function RestaurantsView() {
             }
 
             const match = (allResults || []).find((it) => {
-                const itLat = Number(
-                    (it as any).latitude ?? (it as any).lat ?? 0
-                );
-                const itLng = Number(
-                    (it as any).longitude ?? (it as any).lng ?? 0
-                );
-                const sameCoords =
-                    Math.abs(itLat - rLat) < 1e-6 &&
-                    Math.abs(itLng - rLng) < 1e-6;
-                const sameId =
-                    (it as any).id !== undefined &&
-                    (r as any).id !== undefined &&
-                    String((it as any).id) === String((r as any).id);
-                const itHasLocalFlag =
-                    Boolean((it as any).isLocal) ||
-                    Boolean((it as any).ownerId ?? (it as any).memberId);
-                return (sameCoords || sameId) && itHasLocalFlag;
+                try {
+                    const itLat = Number(
+                        (it as any).latitude ?? (it as any).lat ?? NaN
+                    );
+                    const itLng = Number(
+                        (it as any).longitude ?? (it as any).lng ?? NaN
+                    );
+                    const itId =
+                        (it as any)?.id !== undefined &&
+                        (it as any)?.id !== null
+                            ? String((it as any).id)
+                            : null;
+                    const itName = ((it as any)?.name || '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
+                    const itPlace =
+                        (it as any)?.placeUrl || (it as any)?.placeId || null;
+                    const sameId = rId && itId && rId === itId;
+                    const coordsMatch =
+                        Number.isFinite(itLat) &&
+                        Number.isFinite(itLng) &&
+                        Number.isFinite(rLat) &&
+                        Number.isFinite(rLng) &&
+                        Math.abs(itLat - rLat) < 1e-6 &&
+                        Math.abs(itLng - rLng) < 1e-6;
+                    const nameMatch = itName && rName && itName === rName;
+                    const placeMatch =
+                        rPlaceUrl &&
+                        itPlace &&
+                        String(rPlaceUrl) === String(itPlace);
+                    return sameId || (coordsMatch && (nameMatch || placeMatch));
+                } catch (e) {
+                    return false;
+                }
             });
             if (match) {
-                const augmented = {
-                    ...(r as any),
-                    isLocal: true,
-                } as Restaurant & { isLocal?: boolean };
-                setSelected(augmented);
+                setSelected(match as Restaurant);
             } else {
                 setSelected(r);
             }
@@ -140,10 +252,12 @@ export default function RestaurantsView() {
     const handleDeleted = (id: number) => {
         setSelected(null);
         try {
-            // @ts-ignore
-            if (typeof removeLocalRestaurant === 'function') {
-                // @ts-ignore
-                removeLocalRestaurant(id);
+            if (typeof (window as any).removeLocalRestaurant === 'function') {
+                try {
+                    (window as any).removeLocalRestaurant(id);
+                } catch (e) {
+                    console.error('call removeLocalRestaurant failed', e);
+                }
                 try {
                     if (typeof window !== 'undefined') {
                         window.location.reload();
@@ -152,7 +266,7 @@ export default function RestaurantsView() {
                 return;
             }
         } catch (e) {
-            console.error('call removeLocalRestaurant failed', e);
+            console.error('call removeLocalRestaurant check failed', e);
         }
 
         setMapMarkers((prev) =>
@@ -164,6 +278,139 @@ export default function RestaurantsView() {
             }
         } catch (e) {}
     };
+
+    useEffect(() => {
+        let mounted = true;
+
+        async function loadReviewed() {
+            try {
+                const raw =
+                    sessionStorage.getItem('myReviewedRestaurants') || '[]';
+                const arr = JSON.parse(raw);
+                const ids = Array.isArray(arr)
+                    ? arr
+                          .map((v) => Number(v))
+                          .filter((v) => Number.isFinite(v) && v > 0)
+                    : [];
+                if (ids.length === 0) {
+                    if (mounted) setReviewedRestaurants([]);
+                    return;
+                }
+
+                if (reviewedRestaurants && reviewedRestaurants.length > 0) {
+                    if (mounted)
+                        setReviewedRestaurants(
+                            sortByLastClicked(reviewedRestaurants)
+                        );
+                    return;
+                }
+
+                const fetches = ids.map((rid) =>
+                    fetchRestaurantById(rid).catch((e) => {
+                        console.error(
+                            'fetch reviewed restaurant failed',
+                            rid,
+                            e
+                        );
+                        return null as any;
+                    })
+                );
+                const results = await Promise.all(fetches);
+                const next = results.filter((r) => r && r.id) as Restaurant[];
+                if (mounted) {
+                    reviewedFullRef.current = next;
+                    setReviewedRestaurants(sortByLastClicked(next));
+                }
+            } catch (e) {
+                console.error('loadReviewedRestaurants failed', e);
+                if (mounted) setReviewedRestaurants([]);
+            }
+        }
+
+        if (showReviewedOnly) {
+            loadReviewed();
+        } else {
+            setReviewedRestaurants(null);
+            reviewedFullRef.current = null;
+        }
+
+        return () => {
+            mounted = false;
+        };
+    }, [showReviewedOnly, lastClicked]);
+
+    const displayedRestaurants = showReviewedOnly
+        ? reviewedRestaurants || []
+        : restaurants || [];
+
+    const totalForPaging = showReviewedOnly
+        ? displayedRestaurants.length
+        : total;
+
+    const markersForDisplay = (() => {
+        try {
+            const base = mapMarkers || [];
+
+            if (!showReviewedOnly) return base;
+
+            const keep = new Set<string>();
+            for (const r of displayedRestaurants) {
+                if ((r as any).id !== undefined && (r as any).id !== null) {
+                    keep.add(String((r as any).id));
+                } else {
+                    const lat = Number(
+                        (r as any).latitude ?? (r as any).lat ?? NaN
+                    ).toFixed(6);
+                    const lng = Number(
+                        (r as any).longitude ?? (r as any).lng ?? NaN
+                    ).toFixed(6);
+                    keep.add(`${lat}:${lng}`);
+                }
+            }
+
+            const filtered = base.filter((m) => {
+                if (m.title === '내 위치' || m.title === '선택한 위치')
+                    return true;
+                if (m.id !== undefined && m.id !== null) {
+                    if (keep.has(String(m.id))) return true;
+                }
+                const key = `${Number(m.lat).toFixed(6)}:${Number(
+                    m.lng
+                ).toFixed(6)}`;
+                return keep.has(key);
+            });
+
+            const built: any[] = [];
+            for (const r of displayedRestaurants) {
+                try {
+                    const rid = (r as any).id;
+                    const lat = Number(
+                        (r as any).latitude ?? (r as any).lat ?? 0
+                    );
+                    const lng = Number(
+                        (r as any).longitude ?? (r as any).lng ?? 0
+                    );
+                    const title = (r as any).name || '식당';
+                    const exists = filtered.some(
+                        (m) => String((m as any).id) === String(rid)
+                    );
+                    if (!exists) {
+                        built.push({
+                            id: rid,
+                            lat,
+                            lng,
+                            title,
+                            variant: 'default',
+                        });
+                    }
+                } catch (e) {}
+            }
+
+            return [...built, ...filtered];
+        } catch (e) {
+            return mapMarkers;
+        }
+    })();
 
     return (
         <div className="min-h-screen flex flex-col bg-background">
@@ -184,6 +431,56 @@ export default function RestaurantsView() {
                                             );
                                         }
                                     } catch (e) {}
+
+                                    const performClientFilter = () => {
+                                        try {
+                                            setPage(1);
+                                            setIsNearby(false);
+                                            const base =
+                                                reviewedFullRef.current ||
+                                                reviewedRestaurants ||
+                                                [];
+                                            const q = (v || '')
+                                                .toString()
+                                                .trim()
+                                                .toLowerCase();
+                                            if (!q) {
+                                                setReviewedRestaurants(
+                                                    sortByLastClicked(
+                                                        base || []
+                                                    )
+                                                );
+                                                return;
+                                            }
+                                            const filtered = (
+                                                base || []
+                                            ).filter(
+                                                (r) =>
+                                                    (r.name || '')
+                                                        .toString()
+                                                        .toLowerCase()
+                                                        .indexOf(q) !== -1
+                                            );
+                                            setReviewedRestaurants(
+                                                sortByLastClicked(filtered)
+                                            );
+                                        } catch (e) {
+                                            console.error(
+                                                'client filter failed',
+                                                e
+                                            );
+                                        }
+                                    };
+
+                                    if (showReviewedOnly) {
+                                        // debounce client-side filtering too
+                                        const t = window.setTimeout(() => {
+                                            performClientFilter();
+                                        }, 200);
+                                        searchDebounceRef.current = t;
+                                        return;
+                                    }
+
                                     if (v && v.length > 0) {
                                         const t = window.setTimeout(() => {
                                             setPage(1);
@@ -215,6 +512,45 @@ export default function RestaurantsView() {
                                             searchDebounceRef.current = null;
                                         }
                                     } catch (e) {}
+                                    if (showReviewedOnly) {
+                                        // immediate client filter
+                                        try {
+                                            const base =
+                                                reviewedFullRef.current ||
+                                                reviewedRestaurants ||
+                                                [];
+                                            const q = (keyword || '')
+                                                .toString()
+                                                .trim()
+                                                .toLowerCase();
+                                            if (!q) {
+                                                setReviewedRestaurants(
+                                                    sortByLastClicked(
+                                                        base || []
+                                                    )
+                                                );
+                                            } else {
+                                                const filtered = (
+                                                    base || []
+                                                ).filter(
+                                                    (r) =>
+                                                        (r.name || '')
+                                                            .toString()
+                                                            .toLowerCase()
+                                                            .indexOf(q) !== -1
+                                                );
+                                                setReviewedRestaurants(
+                                                    sortByLastClicked(filtered)
+                                                );
+                                            }
+                                        } catch (e) {
+                                            console.error(
+                                                'client filter failed',
+                                                e
+                                            );
+                                        }
+                                        return;
+                                    }
                                     searchByKeyword(keyword, 1).catch(
                                         console.error
                                     );
@@ -231,6 +567,39 @@ export default function RestaurantsView() {
                                     개 검색
                                 </p>
                                 <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        aria-pressed={showReviewedOnly}
+                                        className={
+                                            (showReviewedOnly
+                                                ? 'group bg-primary text-primary-foreground hover:bg-primary/90 transition-colors'
+                                                : 'bg-white text-gray-700 border hover:bg-gray-50') +
+                                            ' cursor-pointer'
+                                        }
+                                        onClick={() => {
+                                            try {
+                                                if (!isLogin) {
+                                                    try {
+                                                        sessionStorage.setItem(
+                                                            'postLoginRedirect',
+                                                            '/restaurants'
+                                                        );
+                                                    } catch (e) {}
+                                                    router.push(
+                                                        `/login?next=${encodeURIComponent(
+                                                            '/restaurants'
+                                                        )}`
+                                                    );
+                                                    return;
+                                                }
+                                            } catch (e) {}
+                                            setShowReviewedOnly((s) => !s);
+                                        }}
+                                    >
+                                        리뷰
+                                    </Button>
+
                                     <AddRestaurantDialog
                                         lastClicked={lastClicked}
                                         onSuccess={async (created) => {
@@ -287,13 +656,22 @@ export default function RestaurantsView() {
                                         onUpdate={(updated) => {
                                             try {
                                                 if (
-                                                    typeof updateLocalRestaurant ===
+                                                    typeof (window as any)
+                                                        .updateLocalRestaurant ===
                                                     'function'
                                                 ) {
-                                                    // @ts-ignore
-                                                    updateLocalRestaurant(
-                                                        updated
-                                                    );
+                                                    try {
+                                                        (
+                                                            window as any
+                                                        ).updateLocalRestaurant(
+                                                            updated
+                                                        );
+                                                    } catch (e) {
+                                                        console.error(
+                                                            'call updateLocalRestaurant failed',
+                                                            e
+                                                        );
+                                                    }
                                                 }
 
                                                 try {
@@ -355,8 +733,9 @@ export default function RestaurantsView() {
                                                     });
                                                     if (!exists) {
                                                         try {
-                                                            // @ts-ignore
-                                                            addLocalRestaurant(
+                                                            (
+                                                                window as any
+                                                            ).addLocalRestaurant(
                                                                 updated
                                                             );
                                                         } catch (e) {
@@ -485,8 +864,6 @@ export default function RestaurantsView() {
                                             const newPos = { lat, lng };
                                             setUserPos(newPos);
                                             setMapCenter(newPos);
-                                            setIsNearby(true);
-                                            setPage(1);
                                             setMapMarkers((prev) => {
                                                 const filtered = prev.filter(
                                                     (m) => m.title !== '내 위치'
@@ -501,7 +878,6 @@ export default function RestaurantsView() {
                                                     ...filtered,
                                                 ];
                                             });
-                                            loadNearbyRestaurants(1, newPos);
                                         }}
                                     />
                                 </div>
@@ -510,8 +886,13 @@ export default function RestaurantsView() {
 
                         <div className="flex-1 overflow-y-auto">
                             <RestaurantsList
-                                restaurants={restaurants}
+                                restaurants={displayedRestaurants}
                                 userPos={userPos}
+                                originPos={
+                                    showReviewedOnly && lastClicked
+                                        ? lastClicked
+                                        : userPos
+                                }
                                 onItemClick={(r) => handleItemClick(r)}
                             />
                         </div>
@@ -520,10 +901,10 @@ export default function RestaurantsView() {
                             <Pagination
                                 page={page}
                                 canPrev={page > 1}
-                                canNext={total > page * size}
+                                canNext={totalForPaging > page * size}
                                 totalPages={Math.max(
                                     1,
-                                    Math.ceil(total / size)
+                                    Math.ceil(totalForPaging / size)
                                 )}
                                 onPrev={() => {
                                     const np = Math.max(1, page - 1);
@@ -571,7 +952,7 @@ export default function RestaurantsView() {
 
                             <MapPanel
                                 center={mapCenter}
-                                markers={mapMarkers}
+                                markers={markersForDisplay}
                                 onMapClick={(pos) => {
                                     try {
                                         const pick =
