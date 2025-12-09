@@ -135,62 +135,8 @@ export default function MyPage() {
       ? groupBuyingChats.filter((c) => c.status === "완료")
       : [];
 
-  // const myPosts = [
-  //   {
-  //     id: 1,
-  //     category: "꿀팁",
-  //     title: "원룸에서 효율적으로 수납하는 10가지 방법",
-  //     views: 1247,
-  //     likes: 89,
-  //     comments: 23,
-  //     date: "2일 전",
-  //   },
-  //   {
-  //     id: 2,
-  //     category: "혼밥",
-  //     title: "5분만에 완성하는 간단 혼밥 레시피",
-  //     views: 892,
-  //     likes: 67,
-  //     comments: 15,
-  //     date: "5일 전",
-  //   },
-  //   {
-  //     id: 3,
-  //     category: "정보",
-  //     title: "1인 가구 혜택 정리",
-  //     views: 654,
-  //     likes: 45,
-  //     comments: 12,
-  //     date: "1주 전",
-  //   },
-  //   {
-  //     id: 4,
-  //     category: "꿀팁",
-  //     title: "전기세 절약 방법",
-  //     views: 543,
-  //     likes: 38,
-  //     comments: 9,
-  //     date: "2주 전",
-  //   },
-  // ];
-
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
-
-  // const myComments = [
-  //   {
-  //     id: 1,
-  //     postTitle: "강남역 근처 맛집 추천",
-  //     content: "저도 어제 거기 갔는데 진짜 맛있더라구요!",
-  //     date: "1일 전",
-  //   },
-  //   {
-  //     id: 2,
-  //     postTitle: "코스트코 공동구매",
-  //     content: "참여하고 싶어요! 어떻게 하면 되나요?"
-  //     date: "3일 전",
-  //   },
-  // ];
 
   const bookmarkedPosts = [
     {
