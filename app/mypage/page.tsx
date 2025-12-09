@@ -62,7 +62,12 @@ interface Post {
   updatedAt: string;
 }
 
-interface Comment {}
+interface Comment {
+  id: number;
+  postTitle: string;
+  content: string;
+  createdAt: string;
+}
 
 export default function MyPage() {
   const router = useRouter();
@@ -80,8 +85,12 @@ export default function MyPage() {
   const [loading, setLoading] = useState(false);
   const [myPosts, setMyPosts] = useState<Post[] | null>([]);
   const [postPage, setPostPage] = useState(1);
+  const [myComments, setMyComments] = useState<Comment[] | null>([]);
+  const [commentPage, setCommentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const pageSize = 5;
+
+  const postCategories = ["전체", "자유", "꿀팁", "정보"];
 
   const smallGroupChats = [
     {
@@ -168,20 +177,20 @@ export default function MyPage() {
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
 
-  const myComments = [
-    {
-      id: 1,
-      postTitle: "강남역 근처 맛집 추천",
-      content: "저도 어제 거기 갔는데 진짜 맛있더라구요!",
-      date: "1일 전",
-    },
-    {
-      id: 2,
-      postTitle: "코스트코 공동구매",
-      content: "참여하고 싶어요! 어떻게 하면 되나요?",
-      date: "3일 전",
-    },
-  ];
+  // const myComments = [
+  //   {
+  //     id: 1,
+  //     postTitle: "강남역 근처 맛집 추천",
+  //     content: "저도 어제 거기 갔는데 진짜 맛있더라구요!",
+  //     date: "1일 전",
+  //   },
+  //   {
+  //     id: 2,
+  //     postTitle: "코스트코 공동구매",
+  //     content: "참여하고 싶어요! 어떻게 하면 되나요?"
+  //     date: "3일 전",
+  //   },
+  // ];
 
   const bookmarkedPosts = [
     {
@@ -211,6 +220,9 @@ export default function MyPage() {
     { id: 2, nickname: "카페러버", posts: 56 },
   ];
 
+  // 하단 게시글, 레시피, 댓글 등 변환시 페이지 초기화
+  // useEffect(() => {} ,[])
+
   // 마이페이지 유저 정보 불러오기
   useEffect(() => {
     if (isLogin && loginMember?.id) {
@@ -237,6 +249,7 @@ export default function MyPage() {
     }
   }, [isLogin, loginMember]);
 
+  // 사용자가 작성한 게시글 불러오기
   const getMemberPosts = async () => {
     const cat = convertCategoryToEnum(postCategory);
     try {
@@ -354,8 +367,57 @@ export default function MyPage() {
     setExpandedRecipes(newExpanded);
   };
 
-  const postCategories = ["전체", "자유", "꿀팁", "정보"];
+  // 내 댓글 불러오기
+  const getMemberComments = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/comments?page=${
+          commentPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
+      if (!res.ok) {
+        alert("내 댓글 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      setTotalPages(result.totalPages);
+      setMyComments(result.content ?? result ?? []);
+    } catch (err) {
+      console.error("내 댓글 불러오기 실패:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "comments") return;
+    getMemberComments();
+  }, [commentPage, activeTab]);
+
+  // 날짜 포맷 문자열 변환
+  function formatDate(dateString: string) {
+    const date = new Date(dateString);
+
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // 로그인 여부 확인
   useEffect(() => {
     const check = async () => {
       const login = await reloadMember();
@@ -697,7 +759,7 @@ export default function MyPage() {
                                             {post.postType}
                                           </Badge>
                                           <span className="text-xs text-muted-foreground">
-                                            {post.createdAt}
+                                            {formatDate(post.createdAt)}
                                           </span>
                                         </div>
                                         <h4 className="font-semibold mb-2">
@@ -903,18 +965,19 @@ export default function MyPage() {
 
                       {activeTab === "comments" && (
                         <div className="space-y-3">
-                          {myComments.map((comment) => (
-                            <Card key={comment.id}>
+                          {/* 댓글 리스트 */}
+                          {myComments?.map((comment) => (
+                            <Card>
                               <CardContent className="p-4">
                                 <div className="mb-2">
                                   <Link
-                                    href="#"
+                                    href={`/onelife/post/${comment.id}`}
                                     className="text-sm font-medium hover:text-primary"
                                   >
                                     {comment.postTitle}
                                   </Link>
                                   <span className="text-xs text-muted-foreground ml-2">
-                                    {comment.date}
+                                    {formatDate(comment.createdAt)}
                                   </span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
@@ -923,6 +986,40 @@ export default function MyPage() {
                               </CardContent>
                             </Card>
                           ))}
+
+                          {/* 데이터 없을 때 */}
+                          {myComments?.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              작성한 댓글이 없습니다.
+                            </p>
+                          )}
+
+                          {/* 페이징 UI */}
+                          {totalPages > 1 && (
+                            <div className="flex justify-center items-center gap-4 mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={commentPage === 1}
+                                onClick={() => setCommentPage(commentPage - 1)}
+                              >
+                                이전
+                              </Button>
+
+                              <span className="text-sm">
+                                {commentPage} / {totalPages}
+                              </span>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={commentPage === totalPages}
+                                onClick={() => setCommentPage(commentPage + 1)}
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
 
