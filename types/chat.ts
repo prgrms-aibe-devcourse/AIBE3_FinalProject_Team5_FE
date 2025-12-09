@@ -8,6 +8,7 @@ export enum MessageType {
   TALK = "TALK",
   LEAVE = "LEAVE",
   KICK = "KICK",
+  TRANSFER = "TRANSFER", // ✅ 추가
 }
 
 export interface ChatRoom {
