@@ -113,15 +113,10 @@ export default function RestaurantDetailDialog({
     const [soloYes, setSoloYes] = useState<number>(initialYes);
     const [soloNo, setSoloNo] = useState<number>(initialNo);
     const [userSoloVote, setUserSoloVote] = useState<'yes' | 'no' | null>(null);
-
-    // Reset local solo-vote state whenever the `restaurant` prop changes.
-    // If the subsequent server probe/fetch fails, this prevents leftover
-    // values from a previously-opened restaurant from showing up.
     useEffect(() => {
         try {
             setSoloYes(initialYes ?? 0);
             setSoloNo(initialNo ?? 0);
-            // Load any persisted local vote for this restaurant id
             try {
                 const key = `solo_vote_${(restaurant as any)?.id}`;
                 const v = localStorage.getItem(key);
@@ -131,9 +126,7 @@ export default function RestaurantDetailDialog({
             } catch (e) {
                 setUserSoloVote(null);
             }
-        } catch (e) {
-            // ignore
-        }
+        } catch (e) {}
     }, [
         restaurant,
         initialYes,
@@ -172,9 +165,7 @@ export default function RestaurantDetailDialog({
                             summary.myChoice ? 'yes' : 'no'
                         );
                 } catch (e) {}
-            } catch (e) {
-                // ignore fetch errors; keep local state
-            }
+            } catch (e) {}
         })();
         return () => {
             mounted = false;
@@ -250,19 +241,10 @@ export default function RestaurantDetailDialog({
         const looksLikeKakao = Boolean(
             (restaurant as any)?.placeUrl || (restaurant as any)?.placeId
         );
-
-        // Ensure `id` actually exists on backend. It's possible a Kakao placeId was stored
-        // in `id` on client objects; in that case server GET/POST will 400. Try to probe
-        // the server for the id; if it fails and this looks like a Kakao place, create it.
         if (id && Number(id) > 0) {
             try {
-                // Probe server to verify that a Restaurant with this id exists.
-                // We use `fetchRestaurantById` which will throw for 4xx/5xx,
-                // allowing us to detect "not found" and create-asImported.
                 await fetchRestaurantById(id);
             } catch (probeErr) {
-                // probe failed (likely 400/not found). If this is a Kakao-like item,
-                // create the restaurant on server and use returned id.
                 if (looksLikeKakao) {
                     if (!isLogin) {
                         if (
@@ -341,17 +323,14 @@ export default function RestaurantDetailDialog({
                         return;
                     }
                 } else {
-                    // Not a kakao-like item and probe failed: abort
                     window.alert('이 식당에 대한 서버 조회에 실패했습니다.');
                     return;
                 }
             }
         }
 
-        // If no id yet (e.g. initial case), create it if needed
         if (!id || Number(id) <= 0) {
             if (!isLogin) {
-                // Shouldn't happen because we checked isLogin earlier, but guard just in case
                 if (
                     confirm(
                         '투표하려면 로그인해야 합니다. 로그인 페이지로 이동하시겠습니까?'
@@ -395,7 +374,6 @@ export default function RestaurantDetailDialog({
 
                 if (created && created.id) {
                     id = created.id;
-                    // store selected so other flows see it
                     const payload = buildSelectedPayload(
                         Object.assign({}, created, {
                             placeUrl:
@@ -426,18 +404,15 @@ export default function RestaurantDetailDialog({
             }
         }
 
-        // optimistic UI update
         if (prev === vote) {
             if (vote === 'yes') setSoloYes((s) => Math.max(0, s - 1));
             else setSoloNo((s) => Math.max(0, s - 1));
             setUserSoloVote(null);
             setLocalVote(null);
-            // call DELETE to remove vote on server
             (async () => {
                 try {
                     await deleteSoloVote(id);
                 } catch (e) {
-                    // rollback: fetch summary
                     try {
                         const summary = await fetchSoloVoteSummary(id);
                         setSoloYes(summary.yesCount ?? 0);
@@ -455,7 +430,6 @@ export default function RestaurantDetailDialog({
             return;
         }
 
-        // new vote or change
         if (vote === 'yes') setSoloYes((s) => s + 1);
         else setSoloNo((s) => s + 1);
         if (prev === 'yes') setSoloYes((s) => Math.max(0, s - 1));
@@ -466,12 +440,6 @@ export default function RestaurantDetailDialog({
         (async () => {
             try {
                 let resp = await postSoloVote(id, vote === 'yes');
-
-                // Defensive fallback: if server returned a "no record" summary
-                // (myChoice === null) for a Kakao-like item, attempt to create
-                // the restaurant on the server as an imported entry and retry
-                // the vote once. This handles cases where the probe/create
-                // step earlier didn't persist the kakao item for any reason.
                 if (
                     (resp.myChoice === null || resp.myChoice === undefined) &&
                     looksLikeKakao
@@ -504,7 +472,6 @@ export default function RestaurantDetailDialog({
                         );
                         if (created && created.id) {
                             id = created.id;
-                            // Retry the vote once with the newly created id
                             resp = await postSoloVote(id, vote === 'yes');
                         }
                     } catch (e) {
@@ -527,7 +494,6 @@ export default function RestaurantDetailDialog({
                         localStorage.setItem(key, resp.myChoice ? 'yes' : 'no');
                 } catch (e) {}
             } catch (e) {
-                // rollback by fetching summary
                 try {
                     const summary = await fetchSoloVoteSummary(id);
                     setSoloYes(summary.yesCount ?? 0);

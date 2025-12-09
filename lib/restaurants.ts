@@ -288,12 +288,8 @@ export async function fetchSoloVoteSummary(
         }
     );
     if (!res.ok) {
-        // If server responds 400/404 (restaurant not present on server yet),
-        // treat as "no votes yet" so UI can gracefully show 0:0 instead of
-        // throwing. Other error statuses will still throw.
         if (res.status === 400 || res.status === 404) {
             try {
-                // consume body for debugging but return zeroed summary
                 await res.text().catch(() => '');
             } catch (e) {}
             return { yesCount: 0, noCount: 0, myChoice: null };
@@ -329,9 +325,6 @@ export async function postSoloVote(
         }
     );
     if (!res.ok) {
-        // Treat 400/404 as "no server record yet" and return zero-summary
-        // to avoid throwing in the UI. This is the simplest stabilizing
-        // behaviour; later we can implement create-and-retry if needed.
         if (res.status === 400 || res.status === 404) {
             try {
                 await res.text().catch(() => '');
@@ -395,8 +388,6 @@ export async function deleteSoloVote(
         }
     );
     if (!res.ok) {
-        // Same stabilizing behaviour as postSoloVote: treat 400/404 as
-        // "no server record" and return zero-summary instead of throwing.
         if (res.status === 400 || res.status === 404) {
             try {
                 await res.text().catch(() => '');

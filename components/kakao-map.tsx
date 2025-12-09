@@ -24,7 +24,6 @@ type Props = {
     markers?: Marker[];
     highlightId?: number | string | null;
     onMapClick?: (pos: { lat: number; lng: number }) => void;
-    // onMarkerClick now may receive optional pos for markers without an id
     onMarkerClick?: (
         id: number | string | undefined,
         pos?: { lat: number; lng: number }
@@ -184,7 +183,6 @@ export default function KakaoMap({
                     } catch {}
                 });
             } catch {}
-            // Also clear any hover/overlay entries that were stored separately
             try {
                 const overlayMap = overlayMapRef.current || {};
                 Object.keys(overlayMap).forEach((k) => {
@@ -331,7 +329,6 @@ export default function KakaoMap({
                             'click',
                             () => {
                                 try {
-                                    // debug: log marker click and whether callback exists
                                     try {
                                         console.debug(
                                             '[KakaoMap] marker clicked',
