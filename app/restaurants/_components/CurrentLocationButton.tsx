@@ -28,9 +28,7 @@ export default function CurrentLocationButton({
             window.alert('이 브라우저는 위치 정보를 지원하지 않습니다.');
             return;
         }
-        // Check permission state first (if supported) to give clearer guidance
         const proceedGet = () => {
-            // Use slightly more lenient options: some desktops fail with high accuracy
             const opts: PositionOptions = {
                 enableHighAccuracy: false,
                 timeout: 20000,
@@ -43,7 +41,6 @@ export default function CurrentLocationButton({
                 },
                 (err) => {
                     console.error('geolocation error', err);
-                    // err.code: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
                     const code = (err && (err as any).code) || 'unknown';
                     const msg = (err && (err as any).message) || '';
                     window.alert(
@@ -62,18 +59,15 @@ export default function CurrentLocationButton({
                 (navigator as any).permissions
                     .query({ name: 'geolocation' })
                     .then((status: any) => {
-                        // state: 'granted' | 'prompt' | 'denied'
                         if (status.state === 'denied') {
                             window.alert(
                                 '이 사이트에 대한 위치 액세스가 차단되어 있습니다. 브라우저 주소창의 사이트 권한 설정에서 위치 사용을 허용해 주세요.'
                             );
                             return;
                         }
-                        // if granted or prompt, try to get location
                         proceedGet();
                     })
                     .catch(() => {
-                        // permission API not available or failed — proceed anyway
                         proceedGet();
                     });
             } catch (e) {

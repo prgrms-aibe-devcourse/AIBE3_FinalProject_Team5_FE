@@ -46,9 +46,25 @@ export default function RestaurantsView() {
         kakaoSearchNearby,
         addLocalRestaurant,
         updateLocalRestaurant,
+        removeLocalRestaurant,
         localAdded,
         handleItemClick: hookHandleItemClick,
     } = useRestaurants();
+
+    useEffect(() => {
+        try {
+            (window as any).addLocalRestaurant = addLocalRestaurant;
+            (window as any).updateLocalRestaurant = updateLocalRestaurant;
+            (window as any).removeLocalRestaurant = removeLocalRestaurant;
+        } catch (e) {}
+        return () => {
+            try {
+                delete (window as any).addLocalRestaurant;
+                delete (window as any).updateLocalRestaurant;
+                delete (window as any).removeLocalRestaurant;
+            } catch (e) {}
+        };
+    }, [addLocalRestaurant, updateLocalRestaurant, removeLocalRestaurant]);
 
     const searchDebounceRef = useRef<number | null>(null);
 
@@ -65,7 +81,6 @@ export default function RestaurantsView() {
     } | null>(null);
 
     const [showReviewedOnly, setShowReviewedOnly] = useState(false);
-    // Adjacent-list state (shown when clicking a clustered/close marker)
     const [adjacentList, setAdjacentList] = useState<
         (Restaurant & { distanceMeters?: number })[] | null
     >(null);
@@ -92,57 +107,60 @@ export default function RestaurantsView() {
         return dLat * dLat + dLng * dLng;
     };
 
+    const toCoords = (r: any) => ({
+        lat: Number(r?.latitude ?? r?.lat ?? NaN),
+        lng: Number(r?.longitude ?? r?.lng ?? NaN),
+    });
+
+    const getId = (r: any) =>
+        r !== undefined && r !== null && r.id !== undefined && r.id !== null
+            ? String(r.id)
+            : null;
+
+    const getNameLower = (r: any) =>
+        ((r?.name || '') as string).toString().trim().toLowerCase();
+
+    const coordsEqual = (
+        a: { lat: number; lng: number },
+        b: { lat: number; lng: number }
+    ) =>
+        Number.isFinite(a.lat) &&
+        Number.isFinite(a.lng) &&
+        Number.isFinite(b.lat) &&
+        Number.isFinite(b.lng) &&
+        Math.abs(a.lat - b.lat) < 1e-6 &&
+        Math.abs(a.lng - b.lng) < 1e-6;
+
     const sortByLastClicked = (arr: Restaurant[] | null) => {
         if (!arr || !lastClicked) return arr || [];
-        const lat = Number(lastClicked.lat);
-        const lng = Number(lastClicked.lng);
-        return arr.slice().sort((a, b) => {
-            try {
-                const aLat = Number(
-                    (a as any).latitude ?? (a as any).lat ?? NaN
-                );
-                const aLng = Number(
-                    (a as any).longitude ?? (a as any).lng ?? NaN
-                );
-                const bLat = Number(
-                    (b as any).latitude ?? (b as any).lat ?? NaN
-                );
-                const bLng = Number(
-                    (b as any).longitude ?? (b as any).lng ?? NaN
-                );
-                if (!Number.isFinite(aLat) || !Number.isFinite(aLng)) return 1;
-                if (!Number.isFinite(bLat) || !Number.isFinite(bLng)) return -1;
-                return (
-                    distanceSq(aLat, aLng, lat, lng) -
-                    distanceSq(bLat, bLng, lat, lng)
-                );
-            } catch (e) {
-                return 0;
-            }
+        const target = {
+            lat: Number(lastClicked.lat),
+            lng: Number(lastClicked.lng),
+        };
+        return arr.slice().sort((a: any, b: any) => {
+            const aC = toCoords(a);
+            const bC = toCoords(b);
+            if (!Number.isFinite(aC.lat) || !Number.isFinite(aC.lng)) return 1;
+            if (!Number.isFinite(bC.lat) || !Number.isFinite(bC.lng)) return -1;
+            return (
+                (aC.lat - target.lat) * (aC.lat - target.lat) +
+                (aC.lng - target.lng) * (aC.lng - target.lng) -
+                ((bC.lat - target.lat) * (bC.lat - target.lat) +
+                    (bC.lng - target.lng) * (bC.lng - target.lng))
+            );
         });
     };
 
     const handleItemClick = (r: Restaurant) => {
         try {
-            const rLat = Number((r as any).latitude ?? (r as any).lat ?? NaN);
-            const rLng = Number((r as any).longitude ?? (r as any).lng ?? NaN);
-            const rId =
-                (r as any)?.id !== undefined && (r as any)?.id !== null
-                    ? String((r as any).id)
-                    : null;
-            const rName = ((r as any)?.name || '')
-                .toString()
-                .trim()
-                .toLowerCase();
+            const rC = toCoords(r as any);
+            const rId = getId(r as any);
+            const rName = getNameLower(r as any);
             const rPlaceUrl =
                 (r as any)?.placeUrl || (r as any)?.placeId || null;
 
             if (rId) {
-                const byId = (allResults || []).find(
-                    (it) =>
-                        (it as any).id !== undefined &&
-                        String((it as any).id) === rId
-                );
+                const byId = (allResults || []).find((it) => getId(it) === rId);
                 if (byId) {
                     setSelected(byId as Restaurant);
                     hookHandleItemClick(byId as Restaurant);
@@ -152,91 +170,51 @@ export default function RestaurantsView() {
 
             const localMatch = (localAdded || []).find((it) => {
                 try {
-                    const itId =
-                        (it as any)?.id !== undefined &&
-                        (it as any)?.id !== null
-                            ? String((it as any).id)
-                            : null;
-                    const itLat = Number(
-                        (it as any).latitude ?? (it as any).lat ?? NaN
-                    );
-                    const itLng = Number(
-                        (it as any).longitude ?? (it as any).lng ?? NaN
-                    );
-                    const itName = ((it as any)?.name || '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                    const itId = getId(it);
+                    const itC = toCoords(it as any);
+                    const itName = getNameLower(it as any);
                     if (itId && rId && itId === rId) return true;
                     if (
-                        Number.isFinite(itLat) &&
-                        Number.isFinite(itLng) &&
-                        Number.isFinite(rLat) &&
-                        Number.isFinite(rLng)
-                    ) {
-                        const sameCoords =
-                            Math.abs(itLat - rLat) < 1e-6 &&
-                            Math.abs(itLng - rLng) < 1e-6;
-                        if (sameCoords && itName && rName && itName === rName)
-                            return true;
-                    }
+                        coordsEqual(itC, rC) &&
+                        itName &&
+                        rName &&
+                        itName === rName
+                    )
+                        return true;
                 } catch (e) {}
                 return false;
             });
             if (localMatch) {
-                const augmented = {
-                    ...(r as any),
-                    isLocal: true,
-                } as Restaurant & { isLocal?: boolean };
-                setSelected(augmented);
+                setSelected({ ...(r as any), isLocal: true } as Restaurant & {
+                    isLocal?: boolean;
+                });
                 hookHandleItemClick(r);
                 return;
             }
 
-            if (lastClicked && Number.isFinite(rLat) && Number.isFinite(rLng)) {
-                const lcLat = Number(lastClicked.lat);
-                const lcLng = Number(lastClicked.lng);
-                if (
-                    Math.abs(lcLat - rLat) < 1e-6 &&
-                    Math.abs(lcLng - rLng) < 1e-6
-                ) {
-                    const augmented = {
-                        ...(r as any),
-                        isLocal: true,
-                    } as Restaurant & { isLocal?: boolean };
-                    setSelected(augmented);
-                    hookHandleItemClick(r);
-                    return;
-                }
+            if (
+                lastClicked &&
+                coordsEqual(rC, {
+                    lat: Number(lastClicked.lat),
+                    lng: Number(lastClicked.lng),
+                })
+            ) {
+                setSelected({ ...(r as any), isLocal: true } as Restaurant & {
+                    isLocal?: boolean;
+                });
+                hookHandleItemClick(r);
+                return;
             }
 
             const match = (allResults || []).find((it) => {
                 try {
-                    const itLat = Number(
-                        (it as any).latitude ?? (it as any).lat ?? NaN
-                    );
-                    const itLng = Number(
-                        (it as any).longitude ?? (it as any).lng ?? NaN
-                    );
-                    const itId =
-                        (it as any)?.id !== undefined &&
-                        (it as any)?.id !== null
-                            ? String((it as any).id)
-                            : null;
-                    const itName = ((it as any)?.name || '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                    const itC = toCoords(it as any);
+                    const itId = getId(it as any);
+                    const itName = getNameLower(it as any);
                     const itPlace =
                         (it as any)?.placeUrl || (it as any)?.placeId || null;
                     const sameId = rId && itId && rId === itId;
-                    const coordsMatch =
-                        Number.isFinite(itLat) &&
-                        Number.isFinite(itLng) &&
-                        Number.isFinite(rLat) &&
-                        Number.isFinite(rLng) &&
-                        Math.abs(itLat - rLat) < 1e-6 &&
-                        Math.abs(itLng - rLng) < 1e-6;
+                    const coordsMatch = coordsEqual(itC, rC);
                     const nameMatch = itName && rName && itName === rName;
                     const placeMatch =
                         rPlaceUrl &&
@@ -247,11 +225,8 @@ export default function RestaurantsView() {
                     return false;
                 }
             });
-            if (match) {
-                setSelected(match as Restaurant);
-            } else {
-                setSelected(r);
-            }
+
+            setSelected((match as Restaurant) || r);
         } catch (e) {
             setSelected(r);
         }
@@ -359,21 +334,16 @@ export default function RestaurantsView() {
     const markersForDisplay = (() => {
         try {
             const base = mapMarkers || [];
-
             if (!showReviewedOnly) return base;
 
             const keep = new Set<string>();
             for (const r of displayedRestaurants) {
-                if ((r as any).id !== undefined && (r as any).id !== null) {
-                    keep.add(String((r as any).id));
-                } else {
-                    const lat = Number(
-                        (r as any).latitude ?? (r as any).lat ?? NaN
-                    ).toFixed(6);
-                    const lng = Number(
-                        (r as any).longitude ?? (r as any).lng ?? NaN
-                    ).toFixed(6);
-                    keep.add(`${lat}:${lng}`);
+                const id = getId(r as any);
+                if (id) keep.add(id);
+                else {
+                    const c = toCoords(r as any);
+                    if (Number.isFinite(c.lat) && Number.isFinite(c.lng))
+                        keep.add(`${c.lat.toFixed(6)}:${c.lng.toFixed(6)}`);
                 }
             }
 
@@ -393,12 +363,7 @@ export default function RestaurantsView() {
             for (const r of displayedRestaurants) {
                 try {
                     const rid = (r as any).id;
-                    const lat = Number(
-                        (r as any).latitude ?? (r as any).lat ?? 0
-                    );
-                    const lng = Number(
-                        (r as any).longitude ?? (r as any).lng ?? 0
-                    );
+                    const c = toCoords(r as any);
                     const title = (r as any).name || '식당';
                     const exists = filtered.some(
                         (m) => String((m as any).id) === String(rid)
@@ -406,8 +371,8 @@ export default function RestaurantsView() {
                     if (!exists) {
                         built.push({
                             id: rid,
-                            lat,
-                            lng,
+                            lat: c.lat || 0,
+                            lng: c.lng || 0,
                             title,
                             variant: 'default',
                         });
@@ -482,7 +447,6 @@ export default function RestaurantsView() {
                                     };
 
                                     if (showReviewedOnly) {
-                                        // debounce client-side filtering too
                                         const t = window.setTimeout(() => {
                                             performClientFilter();
                                         }, 200);
@@ -522,7 +486,6 @@ export default function RestaurantsView() {
                                         }
                                     } catch (e) {}
                                     if (showReviewedOnly) {
-                                        // immediate client filter
                                         try {
                                             const base =
                                                 reviewedFullRef.current ||
@@ -964,7 +927,6 @@ export default function RestaurantsView() {
                                 markers={markersForDisplay}
                                 onMapClick={(pos) => {
                                     try {
-                                        // hide adjacent-list when clicking elsewhere on map
                                         setAdjacentList(null);
                                         setAdjacentPos(null);
                                         const pick =
@@ -1067,7 +1029,6 @@ export default function RestaurantsView() {
                                     id: number | string | undefined,
                                     pos?: { lat: number; lng: number }
                                 ) => {
-                                    // If marker passed explicit coords (pos), prefer computing cluster first
                                     if (
                                         pos &&
                                         Number.isFinite(pos.lat) &&
@@ -1081,36 +1042,51 @@ export default function RestaurantsView() {
                                             lat: pos.lat,
                                             lng: pos.lng,
                                         });
-
                                         try {
                                             const candidates = [
                                                 ...(restaurants || []),
                                                 ...(allResults || []),
                                                 ...(localAdded || []),
                                             ];
-                                            // build deduplicated candidate map (by id or coords)
                                             const keyed = new Map<
                                                 string,
-                                                Restaurant & { distanceMeters?: number }
+                                                Restaurant & {
+                                                    distanceMeters?: number;
+                                                }
                                             >();
                                             for (const r of candidates) {
                                                 try {
-                                                    const lat = Number(
-                                                        (r as any).latitude ??
-                                                            (r as any).lat ??
-                                                            NaN
+                                                    const c = toCoords(
+                                                        r as any
                                                     );
-                                                    const lng = Number(
-                                                        (r as any).longitude ??
-                                                            (r as any).lng ??
-                                                            NaN
+                                                    if (
+                                                        !Number.isFinite(
+                                                            c.lat
+                                                        ) ||
+                                                        !Number.isFinite(c.lng)
+                                                    )
+                                                        continue;
+                                                    const d = distanceMeters(
+                                                        pos.lat,
+                                                        pos.lng,
+                                                        c.lat,
+                                                        c.lng
                                                     );
-                                                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-                                                    const d = distanceMeters(pos.lat, pos.lng, lat, lng);
-                                                    const id = (r as any).id;
-                                                    const key = id !== undefined && id !== null ? `id:${String(id)}` : `c:${lat.toFixed(6)}:${lng.toFixed(6)}`;
-                                                    const existing = keyed.get(key);
-                                                    if (!existing || (existing.distanceMeters ?? Infinity) > d) {
+                                                    const id = getId(r as any);
+                                                    const key = id
+                                                        ? `id:${id}`
+                                                        : `c:${c.lat.toFixed(
+                                                              6
+                                                          )}:${c.lng.toFixed(
+                                                              6
+                                                          )}`;
+                                                    const existing =
+                                                        keyed.get(key);
+                                                    if (
+                                                        !existing ||
+                                                        (existing.distanceMeters ??
+                                                            Infinity) > d
+                                                    ) {
                                                         keyed.set(key, {
                                                             ...(r as Restaurant),
                                                             distanceMeters: d,
@@ -1119,21 +1095,33 @@ export default function RestaurantsView() {
                                                 } catch (e) {}
                                             }
 
-                                            const computed = Array.from(keyed.values());
-
-                                            // sort by distance and consider a tight cluster radius (same building)
-                                            computed.sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
-                                            const CLUSTER_RADIUS_METERS = 20; // ~same building / very close (narrowed)
-                                            const filtered = computed.filter((c) => (c.distanceMeters ?? Infinity) <= CLUSTER_RADIUS_METERS).slice(0, 8);
+                                            const computed = Array.from(
+                                                keyed.values()
+                                            );
+                                            computed.sort(
+                                                (a, b) =>
+                                                    (a.distanceMeters ?? 0) -
+                                                    (b.distanceMeters ?? 0)
+                                            );
+                                            const CLUSTER_RADIUS_METERS = 20;
+                                            const filtered = computed
+                                                .filter(
+                                                    (c) =>
+                                                        (c.distanceMeters ??
+                                                            Infinity) <=
+                                                        CLUSTER_RADIUS_METERS
+                                                )
+                                                .slice(0, 8);
 
                                             if (filtered.length === 1) {
-                                                // single restaurant near this marker -> open dialog directly
                                                 console.debug(
                                                     '[RestaurantsView] single adjacent -> open dialog',
                                                     filtered[0]
                                                 );
                                                 try {
-                                                    handleItemClick(filtered[0] as Restaurant);
+                                                    handleItemClick(
+                                                        filtered[0] as Restaurant
+                                                    );
                                                 } catch (e) {}
                                                 setAdjacentList(null);
                                                 setAdjacentPos(null);
@@ -1161,7 +1149,6 @@ export default function RestaurantsView() {
                                         }
                                     }
 
-                                    // Fallback: try to match marker by id or by coordinates in mapMarkers
                                     const found =
                                         restaurants.find(
                                             (r) => (r as any).id === id
@@ -1185,7 +1172,6 @@ export default function RestaurantsView() {
                                                         String(mm.id) ===
                                                         String(id)
                                                     );
-                                                // If id is undefined, attempt coordinate match if available
                                                 if (
                                                     pos &&
                                                     Number.isFinite(mm.lat) &&
@@ -1215,7 +1201,6 @@ export default function RestaurantsView() {
                                 highlightId={highlightedId}
                             />
 
-                            {/* Adjacent restaurants overlay (appears when clicking clustered markers) */}
                             {adjacentList && adjacentList.length ? (
                                 <div
                                     style={{ zIndex: 99999 }}
@@ -1294,20 +1279,16 @@ export default function RestaurantsView() {
                 }}
                 onCreated={async (created) => {
                     try {
-                        // Ensure created restaurant is visible in lists/markers
                         setSelected(created);
                         try {
                             setPage(1);
                         } catch (e) {}
-
-                        // Add to local-added list (so handleItemClick/finders can match it)
                         try {
                             addLocalRestaurant(created);
                         } catch (e) {
                             console.error('addLocalRestaurant failed', e);
                         }
 
-                        // Update map markers to include/replace this restaurant
                         try {
                             setMapMarkers((prev) => {
                                 const next = (prev || []).slice();
@@ -1358,7 +1339,6 @@ export default function RestaurantsView() {
                             console.error('setMapMarkers failed', e);
                         }
 
-                        // Persist to session so preview/next flows see it
                         try {
                             const payload = {
                                 id: created.id,
