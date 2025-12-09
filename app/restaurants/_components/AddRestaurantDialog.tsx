@@ -42,6 +42,36 @@ export default function AddRestaurantDialog({
     onUpdate,
     onRequestMapPick,
 }: Props) {
+    async function resizeImageFile(
+        file: File,
+        maxWidth = 1280,
+        maxHeight = 1280,
+        quality = 0.8
+    ): Promise<File> {
+        const imgBitmap = await createImageBitmap(file);
+        let { width, height } = imgBitmap;
+        const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+        const targetWidth = Math.round(width * ratio);
+        const targetHeight = Math.round(height * ratio);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas not supported');
+        ctx.drawImage(imgBitmap, 0, 0, targetWidth, targetHeight);
+
+        const blob: Blob | null = await new Promise((resolve) =>
+            canvas.toBlob(resolve as BlobCallback, 'image/jpeg', quality)
+        );
+        if (!blob) throw new Error('이미지 변환에 실패했습니다.');
+        const newFile = new File(
+            [blob],
+            file.name.replace(/\.[^.]+$/, '.jpg'),
+            { type: 'image/jpeg' }
+        );
+        return newFile;
+    }
     const [openInternal, setOpenInternal] = useState(false);
     const open = controlledOpen === undefined ? openInternal : controlledOpen;
     const setOpen =
@@ -316,11 +346,28 @@ export default function AddRestaurantDialog({
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                     const f =
                                         e.target.files && e.target.files[0];
-                                    if (f) setSelectedFile(f);
-                                    else setSelectedFile(null);
+                                    if (f) {
+                                        try {
+                                            const resized =
+                                                await resizeImageFile(
+                                                    f,
+                                                    1280,
+                                                    1280,
+                                                    0.8
+                                                );
+                                            setSelectedFile(resized);
+                                        } catch (err) {
+                                            console.error(
+                                                '[image resize]',
+                                                err
+                                            );
+                                            // 실패 시 원본 사용
+                                            setSelectedFile(f);
+                                        }
+                                    } else setSelectedFile(null);
                                 }}
                             />
                             <Button
