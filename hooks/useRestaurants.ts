@@ -741,6 +741,7 @@ export function useRestaurants(
                 );
                 return;
             }
+            console.debug('[useRestaurants] addLocalRestaurant called', r);
             const ref = userPos ?? mapCenter;
             const lat = (r as any).latitude ?? (r as any).lat;
             const lng = (r as any).longitude ?? (r as any).lng;
@@ -753,8 +754,13 @@ export function useRestaurants(
                 ownerId: (r as any).ownerId ?? loginMember?.id ?? null,
             } as Restaurant & { distanceMeters?: number };
             const isServerCreated = Number((r as any).id) > 0;
+            console.debug(
+                '[useRestaurants] addLocalRestaurant isServerCreated=',
+                isServerCreated
+            );
 
             const reconcile = (created: Restaurant) => {
+                console.debug('[useRestaurants] reconcile created', created);
                 const createdLat =
                     (created as any).latitude ?? (created as any).lat;
                 const createdLng =
@@ -1162,12 +1168,23 @@ export function useRestaurants(
     useEffect(() => {
         if (!isLogin) {
             setLocalAdded([]);
-            loadRestaurants().catch(console.error);
+            // prefer nearby view for initial load even when not logged in
+            setIsNearby(true);
+            loadNearbyRestaurants(1, mapCenter).catch(console.error);
         }
     }, [isLogin]);
 
     useEffect(() => {
-        loadRestaurants().catch(console.error);
+        // On initial mount prefer nearby results (markers + nearby list)
+        setIsNearby(true);
+        loadNearbyRestaurants().catch((e) => {
+            console.error(
+                'initial nearby load failed, falling back to full list',
+                e
+            );
+            // fallback to full listing if nearby fails
+            loadRestaurants().catch(console.error);
+        });
     }, []);
 
     return {

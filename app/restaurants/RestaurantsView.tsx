@@ -14,6 +14,7 @@ import Pagination from './_components/Pagination';
 import MapPanel from './_components/MapPanel';
 import type { Restaurant } from '@/lib/restaurants';
 import useRestaurants from '@/hooks/useRestaurants';
+import { distanceMeters } from '@/lib/geo';
 import RestaurantDetailDialog from './_components/RestaurantDetailDialog';
 
 export default function RestaurantsView() {
@@ -64,6 +65,14 @@ export default function RestaurantsView() {
     } | null>(null);
 
     const [showReviewedOnly, setShowReviewedOnly] = useState(false);
+    // Adjacent-list state (shown when clicking a clustered/close marker)
+    const [adjacentList, setAdjacentList] = useState<
+        (Restaurant & { distanceMeters?: number })[] | null
+    >(null);
+    const [adjacentPos, setAdjacentPos] = useState<{
+        lat: number;
+        lng: number;
+    } | null>(null);
     const router = useRouter();
     const { isLogin } = useAuth();
 
@@ -955,6 +964,9 @@ export default function RestaurantsView() {
                                 markers={markersForDisplay}
                                 onMapClick={(pos) => {
                                     try {
+                                        // hide adjacent-list when clicking elsewhere on map
+                                        setAdjacentList(null);
+                                        setAdjacentPos(null);
                                         const pick =
                                             pendingPickRef.current ||
                                             pendingPick;
@@ -1051,7 +1063,105 @@ export default function RestaurantsView() {
                                         );
                                     }
                                 }}
-                                onMarkerClick={(id) => {
+                                onMarkerClick={(
+                                    id: number | string | undefined,
+                                    pos?: { lat: number; lng: number }
+                                ) => {
+                                    // If marker passed explicit coords (pos), prefer computing cluster first
+                                    if (
+                                        pos &&
+                                        Number.isFinite(pos.lat) &&
+                                        Number.isFinite(pos.lng)
+                                    ) {
+                                        console.debug(
+                                            '[RestaurantsView] marker click pos',
+                                            pos
+                                        );
+                                        setMapCenter({
+                                            lat: pos.lat,
+                                            lng: pos.lng,
+                                        });
+
+                                        try {
+                                            const candidates = [
+                                                ...(restaurants || []),
+                                                ...(allResults || []),
+                                                ...(localAdded || []),
+                                            ];
+                                            // build deduplicated candidate map (by id or coords)
+                                            const keyed = new Map<
+                                                string,
+                                                Restaurant & { distanceMeters?: number }
+                                            >();
+                                            for (const r of candidates) {
+                                                try {
+                                                    const lat = Number(
+                                                        (r as any).latitude ??
+                                                            (r as any).lat ??
+                                                            NaN
+                                                    );
+                                                    const lng = Number(
+                                                        (r as any).longitude ??
+                                                            (r as any).lng ??
+                                                            NaN
+                                                    );
+                                                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+                                                    const d = distanceMeters(pos.lat, pos.lng, lat, lng);
+                                                    const id = (r as any).id;
+                                                    const key = id !== undefined && id !== null ? `id:${String(id)}` : `c:${lat.toFixed(6)}:${lng.toFixed(6)}`;
+                                                    const existing = keyed.get(key);
+                                                    if (!existing || (existing.distanceMeters ?? Infinity) > d) {
+                                                        keyed.set(key, {
+                                                            ...(r as Restaurant),
+                                                            distanceMeters: d,
+                                                        });
+                                                    }
+                                                } catch (e) {}
+                                            }
+
+                                            const computed = Array.from(keyed.values());
+
+                                            // sort by distance and consider a tight cluster radius (same building)
+                                            computed.sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
+                                            const CLUSTER_RADIUS_METERS = 20; // ~same building / very close (narrowed)
+                                            const filtered = computed.filter((c) => (c.distanceMeters ?? Infinity) <= CLUSTER_RADIUS_METERS).slice(0, 8);
+
+                                            if (filtered.length === 1) {
+                                                // single restaurant near this marker -> open dialog directly
+                                                console.debug(
+                                                    '[RestaurantsView] single adjacent -> open dialog',
+                                                    filtered[0]
+                                                );
+                                                try {
+                                                    handleItemClick(filtered[0] as Restaurant);
+                                                } catch (e) {}
+                                                setAdjacentList(null);
+                                                setAdjacentPos(null);
+                                                return;
+                                            }
+                                            if (filtered.length > 1) {
+                                                console.debug(
+                                                    '[RestaurantsView] adjacent list length',
+                                                    filtered.length
+                                                );
+                                                setAdjacentList(filtered);
+                                                setAdjacentPos({
+                                                    lat: pos.lat,
+                                                    lng: pos.lng,
+                                                });
+                                                return;
+                                            }
+                                        } catch (e) {
+                                            console.error(
+                                                'compute adjacent list failed',
+                                                e
+                                            );
+                                            setAdjacentList(null);
+                                            setAdjacentPos(null);
+                                        }
+                                    }
+
+                                    // Fallback: try to match marker by id or by coordinates in mapMarkers
                                     const found =
                                         restaurants.find(
                                             (r) => (r as any).id === id
@@ -1059,23 +1169,108 @@ export default function RestaurantsView() {
                                         allResults.find(
                                             (r) => (r as any).id === id
                                         );
-                                    if (found)
+                                    if (found) {
                                         handleItemClick(found as Restaurant);
-                                    else {
-                                        const m = (mapMarkers as any[]).find(
-                                            (mm) =>
-                                                String((mm as any).id) ===
-                                                String(id)
-                                        );
-                                        if (m)
-                                            setMapCenter({
-                                                lat: m.lat,
-                                                lng: m.lng,
-                                            });
+                                        return;
                                     }
+
+                                    const m = (mapMarkers as any[]).find(
+                                        (mm) => {
+                                            try {
+                                                if (
+                                                    mm.id !== undefined &&
+                                                    id !== undefined
+                                                )
+                                                    return (
+                                                        String(mm.id) ===
+                                                        String(id)
+                                                    );
+                                                // If id is undefined, attempt coordinate match if available
+                                                if (
+                                                    pos &&
+                                                    Number.isFinite(mm.lat) &&
+                                                    Number.isFinite(mm.lng)
+                                                ) {
+                                                    return (
+                                                        Math.abs(
+                                                            Number(mm.lat) -
+                                                                pos.lat
+                                                        ) < 1e-6 &&
+                                                        Math.abs(
+                                                            Number(mm.lng) -
+                                                                pos.lng
+                                                        ) < 1e-6
+                                                    );
+                                                }
+                                            } catch (e) {}
+                                            return false;
+                                        }
+                                    );
+                                    if (m)
+                                        setMapCenter({
+                                            lat: m.lat,
+                                            lng: m.lng,
+                                        });
                                 }}
                                 highlightId={highlightedId}
                             />
+
+                            {/* Adjacent restaurants overlay (appears when clicking clustered markers) */}
+                            {adjacentList && adjacentList.length ? (
+                                <div
+                                    style={{ zIndex: 99999 }}
+                                    className="absolute top-6 right-6 w-80 max-w-[40%] bg-white dark:bg-card border shadow-lg rounded p-3"
+                                >
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="font-medium">
+                                            선택한 위치 주변
+                                        </div>
+                                        <button
+                                            className="text-sm text-gray-500 hover:underline"
+                                            onClick={() => {
+                                                setAdjacentList(null);
+                                                setAdjacentPos(null);
+                                            }}
+                                        >
+                                            닫기
+                                        </button>
+                                    </div>
+                                    <ul className="space-y-2 max-h-64 overflow-auto">
+                                        {adjacentList.map((r) => (
+                                            <li
+                                                key={
+                                                    String((r as any).id) +
+                                                    '_' +
+                                                    String(
+                                                        (r as any).latitude ??
+                                                            (r as any).lat
+                                                    )
+                                                }
+                                                className="p-2 rounded hover:bg-gray-50 cursor-pointer"
+                                                onClick={() => {
+                                                    try {
+                                                        handleItemClick(
+                                                            r as Restaurant
+                                                        );
+                                                    } catch (e) {}
+                                                    setAdjacentList(null);
+                                                    setAdjacentPos(null);
+                                                }}
+                                            >
+                                                <div className="text-sm font-medium">
+                                                    {(r as any).name || '식당'}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {Math.round(
+                                                        r.distanceMeters ?? 0
+                                                    )}
+                                                    m
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 </div>
@@ -1096,6 +1291,126 @@ export default function RestaurantsView() {
                     setEditDialogOpen(true);
                     setSelected(null);
                     setHighlightedId(null);
+                }}
+                onCreated={async (created) => {
+                    try {
+                        // Ensure created restaurant is visible in lists/markers
+                        setSelected(created);
+                        try {
+                            setPage(1);
+                        } catch (e) {}
+
+                        // Add to local-added list (so handleItemClick/finders can match it)
+                        try {
+                            addLocalRestaurant(created);
+                        } catch (e) {
+                            console.error('addLocalRestaurant failed', e);
+                        }
+
+                        // Update map markers to include/replace this restaurant
+                        try {
+                            setMapMarkers((prev) => {
+                                const next = (prev || []).slice();
+                                const lat = Number(
+                                    (created as any).latitude ??
+                                        (created as any).lat ??
+                                        0
+                                );
+                                const lng = Number(
+                                    (created as any).longitude ??
+                                        (created as any).lng ??
+                                        0
+                                );
+                                const idKey = created.id ?? null;
+                                let replaced = false;
+                                for (let i = 0; i < next.length; i++) {
+                                    try {
+                                        const m = next[i] as any;
+                                        const mLat = Number(m.lat ?? 0);
+                                        const mLng = Number(m.lng ?? 0);
+                                        if (
+                                            Math.abs(mLat - lat) < 1e-6 &&
+                                            Math.abs(mLng - lng) < 1e-6
+                                        ) {
+                                            next[i] = {
+                                                ...m,
+                                                id: idKey,
+                                                lat,
+                                                lng,
+                                                title: created.name || m.title,
+                                            };
+                                            replaced = true;
+                                            break;
+                                        }
+                                    } catch (e) {}
+                                }
+                                if (!replaced) {
+                                    next.unshift({
+                                        id: idKey,
+                                        lat,
+                                        lng,
+                                        title: created.name || '식당',
+                                    });
+                                }
+                                return next;
+                            });
+                        } catch (e) {
+                            console.error('setMapMarkers failed', e);
+                        }
+
+                        // Persist to session so preview/next flows see it
+                        try {
+                            const payload = {
+                                id: created.id,
+                                lat:
+                                    (created as any).latitude ??
+                                    (created as any).lat,
+                                lng:
+                                    (created as any).longitude ??
+                                    (created as any).lng,
+                            };
+                            const raw =
+                                sessionStorage.getItem(
+                                    'myCreatedRestaurants'
+                                ) || '[]';
+                            const arr = JSON.parse(raw || '[]');
+                            const next = Array.isArray(arr) ? arr.slice() : [];
+                            let found = false;
+                            for (let i = 0; i < next.length; i++) {
+                                const it = next[i];
+                                try {
+                                    const itLat = Number(
+                                        it.lat ?? it.latitude ?? 0
+                                    );
+                                    const itLng = Number(
+                                        it.lng ?? it.longitude ?? 0
+                                    );
+                                    const updLat = Number(payload.lat ?? 0);
+                                    const updLng = Number(payload.lng ?? 0);
+                                    const sameCoords =
+                                        Math.abs(itLat - updLat) < 1e-6 &&
+                                        Math.abs(itLng - updLng) < 1e-6;
+                                    if (sameCoords) {
+                                        next[i] = payload;
+                                        found = true;
+                                        break;
+                                    }
+                                } catch (e) {}
+                            }
+                            if (!found) next.push(payload);
+                            sessionStorage.setItem(
+                                'myCreatedRestaurants',
+                                JSON.stringify(next)
+                            );
+                        } catch (e) {
+                            console.error(
+                                'persist myCreatedRestaurants failed',
+                                e
+                            );
+                        }
+                    } catch (e) {
+                        console.error('onCreated handler error', e);
+                    }
                 }}
             />
         </div>

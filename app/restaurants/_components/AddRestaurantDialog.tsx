@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/global/auth/useAuth';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,11 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { createRestaurant, updateRestaurant } from '@/lib/restaurants';
+import {
+    createRestaurant,
+    updateRestaurant,
+    uploadRestaurantImage,
+} from '@/lib/restaurants';
 
 import type { Restaurant } from '@/lib/restaurants';
 
@@ -45,53 +49,21 @@ export default function AddRestaurantDialog({
             ? setOpenInternal
             : controlledOnOpenChange;
     const router = useRouter();
-    const { isLogin, loginMember } = useAuth();
+    const { isLogin } = useAuth();
+
     const [form, setForm] = useState({
         name: '',
         jibunAddress: '',
         roadAddress: '',
         phone: '',
     });
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [selectedLocation, setSelectedLocation] = useState<{
         lat: number;
         lng: number;
     } | null>(null);
     const [awaitingPick, setAwaitingPick] = useState(false);
-
-    const setFromClick = () => {
-        if (typeof onRequestMapPick === 'function') {
-            try {
-                try {
-                    window.alert('지도를 클릭해 좌표를 선택하세요.');
-                } catch (err) {
-                    console.debug('alert unavailable', err);
-                }
-
-                try {
-                    const draft = { ...form };
-                    sessionStorage.setItem(
-                        'addRestaurantDraft',
-                        JSON.stringify(draft)
-                    );
-                } catch (e) {
-                    console.error('store addRestaurantDraft', e);
-                }
-
-                setAwaitingPick(true);
-                setOpen(false);
-                onRequestMapPick();
-                return;
-            } catch (e) {
-                console.error('request map pick failed', e);
-            }
-        }
-
-        if (!lastClicked) {
-            window.alert('먼저 지도를 클릭해 좌표를 선택하세요.');
-            return;
-        }
-        setSelectedLocation({ lat: lastClicked.lat, lng: lastClicked.lng });
-    };
 
     useEffect(() => {
         if (initialData) {
@@ -110,28 +82,47 @@ export default function AddRestaurantDialog({
     }, [initialData]);
 
     useEffect(() => {
-        if (awaitingPick && lastClicked) {
-            setSelectedLocation({ lat: lastClicked.lat, lng: lastClicked.lng });
-            setAwaitingPick(false);
+        if (!open) {
+            setSelectedFile(null);
+            try {
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            } catch (e) {}
         }
-    }, [awaitingPick, lastClicked]);
+    }, [open]);
+
+    const setFromClick = () => {
+        if (typeof onRequestMapPick === 'function') {
+            try {
+                sessionStorage.setItem(
+                    'addRestaurantDraft',
+                    JSON.stringify(form)
+                );
+            } catch (e) {}
+            setAwaitingPick(true);
+            setOpen(false);
+            onRequestMapPick();
+            return;
+        }
+        if (!lastClicked) {
+            window.alert('먼저 지도를 클릭해 좌표를 선택하세요.');
+            return;
+        }
+        setSelectedLocation({ lat: lastClicked.lat, lng: lastClicked.lng });
+    };
 
     const submitAdd = async (e: React.FormEvent) => {
         e.preventDefault();
         const { name, jibunAddress, roadAddress, phone } = form;
-        if (!name || !jibunAddress || !roadAddress || !phone) {
-            window.alert('모든 필드를 입력해주세요.');
-            return;
-        }
-        if (!selectedLocation && !lastClicked) {
-            window.alert('위치를 지도에서 선택해 주세요.');
-            return;
-        }
+        if (!name || !jibunAddress || !roadAddress)
+            return window.alert('식당명과 주소는 필수입니다.');
+        if (!selectedLocation && !lastClicked)
+            return window.alert('위치를 지도에서 선택해 주세요.');
         const lat = selectedLocation ? selectedLocation.lat : lastClicked!.lat;
         const lng = selectedLocation ? selectedLocation.lng : lastClicked!.lng;
+
         try {
             if (mode === 'edit') {
-                const updatedPayload = {
+                const payload = {
                     name,
                     jibunAddress,
                     roadAddress,
@@ -139,53 +130,62 @@ export default function AddRestaurantDialog({
                     latitude: lat,
                     longitude: lng,
                 };
-
-                try {
-                    const id = (initialData as any)?.id ?? null;
-                    if (id && Number(id) > 0) {
-                        const updated = await updateRestaurant(
-                            id,
-                            updatedPayload
-                        );
-
-                        if (onUpdate) onUpdate(updated as Restaurant);
-                        else onSuccess(updated as Restaurant);
-                        window.alert('식당 정보가 저장되었습니다.');
-                        setOpen(false);
-                        setForm({
-                            name: '',
-                            jibunAddress: '',
-                            roadAddress: '',
-                            phone: '',
-                        });
-                        setSelectedLocation(null);
-                    } else {
-                        const updated = {
-                            ...(initialData || {}),
-                            ...updatedPayload,
-                            isLocal: true,
-                            ownerId:
-                                (initialData as any)?.ownerId ??
-                                loginMember?.id ??
-                                null,
-                        } as Restaurant;
-                        if (onUpdate) onUpdate(updated);
-                        else onSuccess(updated);
-                        window.alert('식당 정보가 저장되었습니다.');
-                        setOpen(false);
-                        setForm({
-                            name: '',
-                            jibunAddress: '',
-                            roadAddress: '',
-                            phone: '',
-                        });
-                        setSelectedLocation(null);
+                const id = (initialData as any)?.id ?? null;
+                if (id && Number(id) > 0) {
+                    let updated = await updateRestaurant(id, payload);
+                    if (selectedFile && (updated as any).id) {
+                        try {
+                            updated = await uploadRestaurantImage(
+                                (updated as any).id,
+                                selectedFile
+                            );
+                        } catch (e) {
+                            console.error(e);
+                        }
                     }
-                } catch (e) {
-                    console.error('update restaurant failed', e);
-                    window.alert('식당 수정 중 오류가 발생했습니다.');
+                    if (onUpdate) onUpdate(updated as Restaurant);
+                    else onSuccess(updated as Restaurant);
+                } else {
+                    if (!isLogin) {
+                        sessionStorage.setItem(
+                            'postLoginRedirect',
+                            '/restaurants'
+                        );
+                        router.push(
+                            `/login?next=${encodeURIComponent('/restaurants')}`
+                        );
+                        return;
+                    }
+                    const created = await createRestaurant(payload);
+                    console.debug(
+                        '[AddRestaurantDialog] created (edit fallback)',
+                        created
+                    );
+                    if (selectedFile && (created as any).id) {
+                        try {
+                            const updated = await uploadRestaurantImage(
+                                (created as any).id,
+                                selectedFile
+                            );
+                            if (onUpdate) onUpdate(updated as Restaurant);
+                            else onSuccess(updated as Restaurant);
+                        } catch (e) {
+                            if (onUpdate) onUpdate(created as Restaurant);
+                            else onSuccess(created as Restaurant);
+                        }
+                    } else {
+                        if (onUpdate) onUpdate(created as Restaurant);
+                        else onSuccess(created as Restaurant);
+                    }
                 }
             } else {
+                if (!isLogin) {
+                    sessionStorage.setItem('postLoginRedirect', '/restaurants');
+                    router.push(
+                        `/login?next=${encodeURIComponent('/restaurants')}`
+                    );
+                    return;
+                }
                 const created = await createRestaurant({
                     name,
                     jibunAddress,
@@ -194,71 +194,28 @@ export default function AddRestaurantDialog({
                     latitude: lat,
                     longitude: lng,
                 });
-                window.alert('식당이 등록되었습니다.');
-                setOpen(false);
-                setForm({
-                    name: '',
-                    jibunAddress: '',
-                    roadAddress: '',
-                    phone: '',
-                });
-                setSelectedLocation(null);
-
-                let savedId: number | string = -Date.now();
-                let createdObj: any = null;
-                if (created && (created as any).id) {
-                    createdObj = created as Restaurant;
-                    onSuccess(created as Restaurant);
-                    savedId = (created as any).id;
-                } else {
-                    const local: any = {
-                        id: savedId,
-                        name,
-                        phone,
-                        jibunAddress,
-                        roadAddress,
-                        latitude: lat,
-                        longitude: lng,
-                        image: '/placeholder.svg',
-                        averageRating: undefined,
-                        reviewCount: 0,
-                        ownerId: loginMember?.id ?? null,
-                    };
-                    createdObj = local;
-                    onSuccess(local as Restaurant);
-                }
-
-                try {
-                    const shouldMarkClientCreated =
-                        Number(savedId) < 0 ||
-                        (createdObj &&
-                            (createdObj as any).ownerId &&
-                            loginMember &&
-                            Number((createdObj as any).ownerId) ===
-                                Number(loginMember.id));
-                    if (shouldMarkClientCreated) {
-                        const existing = JSON.parse(
-                            sessionStorage.getItem('myCreatedRestaurants') ||
-                                '[]'
+                console.debug('[AddRestaurantDialog] created', created);
+                if (selectedFile && (created as any).id) {
+                    try {
+                        const updated = await uploadRestaurantImage(
+                            (created as any).id,
+                            selectedFile
                         );
-                        const entry = {
-                            id: savedId,
-                            lat,
-                            lng,
-                        };
-                        existing.push(entry);
-                        sessionStorage.setItem(
-                            'myCreatedRestaurants',
-                            JSON.stringify(existing)
-                        );
+                        onSuccess(updated as Restaurant);
+                    } catch (e) {
+                        onSuccess(created as Restaurant);
                     }
-                } catch (e) {
-                    console.error('store myCreatedRestaurants', e);
+                } else {
+                    onSuccess(created as Restaurant);
                 }
             }
+            setOpen(false);
+            setForm({ name: '', jibunAddress: '', roadAddress: '', phone: '' });
+            setSelectedLocation(null);
+            setSelectedFile(null);
         } catch (err) {
-            console.error('add restaurant error', err);
-            window.alert('등록 중 오류가 발생했습니다.');
+            console.error(err);
+            window.alert('오류가 발생했습니다.');
         }
     };
 
@@ -281,12 +238,10 @@ export default function AddRestaurantDialog({
                         size="sm"
                         className="cursor-pointer"
                         onClick={() => {
-                            try {
-                                sessionStorage.setItem(
-                                    'postLoginRedirect',
-                                    '/restaurants'
-                                );
-                            } catch (e) {}
+                            sessionStorage.setItem(
+                                'postLoginRedirect',
+                                '/restaurants'
+                            );
                             router.push(
                                 `/login?next=${encodeURIComponent(
                                     '/restaurants'
@@ -340,14 +295,46 @@ export default function AddRestaurantDialog({
                         />
                     </div>
                     <div>
-                        <label className="block text-xs mb-1">전화번호</label>
+                        <label className="block text-xs mb-1">
+                            전화번호 (선택)
+                        </label>
                         <Input
                             value={form.phone}
                             onChange={(e) =>
                                 setForm({ ...form, phone: e.target.value })
                             }
-                            required
                         />
+                    </div>
+                    <div>
+                        <label className="block text-xs mb-1">
+                            사진 (선택)
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                id="restaurant-image-input"
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const f =
+                                        e.target.files && e.target.files[0];
+                                    if (f) setSelectedFile(f);
+                                    else setSelectedFile(null);
+                                }}
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                사진 업로드
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                                {selectedFile ? selectedFile.name : ''}
+                            </span>
+                        </div>
                     </div>
                     <div className="mt-2">
                         <label className="block text-xs mb-1">위치</label>
@@ -356,20 +343,24 @@ export default function AddRestaurantDialog({
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={setFromClick}
+                                onClick={() => setFromClick()}
                             >
                                 지도에서 위치추가하기
                             </Button>
                         </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                        <span>지도를 클릭하면 좌표를 확인할 수 있어요.</span>
-                    </div>
                     <DialogFooter>
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setOpen(false)}
+                            onClick={() => {
+                                setOpen(false);
+                                setSelectedFile(null);
+                                try {
+                                    if (fileInputRef.current)
+                                        fileInputRef.current.value = '';
+                                } catch (e) {}
+                            }}
                         >
                             취소
                         </Button>

@@ -24,7 +24,11 @@ type Props = {
     markers?: Marker[];
     highlightId?: number | string | null;
     onMapClick?: (pos: { lat: number; lng: number }) => void;
-    onMarkerClick?: (id: number | string) => void;
+    // onMarkerClick now may receive optional pos for markers without an id
+    onMarkerClick?: (
+        id: number | string | undefined,
+        pos?: { lat: number; lng: number }
+    ) => void;
     enableClickDebug?: boolean;
 };
 
@@ -180,6 +184,17 @@ export default function KakaoMap({
                     } catch {}
                 });
             } catch {}
+            // Also clear any hover/overlay entries that were stored separately
+            try {
+                const overlayMap = overlayMapRef.current || {};
+                Object.keys(overlayMap).forEach((k) => {
+                    try {
+                        const ov = overlayMap[k];
+                        if (ov && ov.setMap) ov.setMap(null);
+                    } catch {}
+                });
+            } catch {}
+            overlayMapRef.current = {};
             markersRef.current = [];
 
             if (Array.isArray(markers) && markers.length && mapRef.current) {
@@ -316,10 +331,40 @@ export default function KakaoMap({
                             'click',
                             () => {
                                 try {
+                                    // debug: log marker click and whether callback exists
+                                    try {
+                                        console.debug(
+                                            '[KakaoMap] marker clicked',
+                                            {
+                                                id: m.id,
+                                                lat: m.lat,
+                                                lng: m.lng,
+                                                hasHandler:
+                                                    typeof onMarkerClick ===
+                                                    'function',
+                                            }
+                                        );
+                                    } catch {}
+
                                     if (typeof onMarkerClick === 'function') {
-                                        onMarkerClick(m.id as any);
+                                        try {
+                                            onMarkerClick(m.id as any, {
+                                                lat: m.lat,
+                                                lng: m.lng,
+                                            });
+                                        } catch (e) {
+                                            console.error(
+                                                '[KakaoMap] onMarkerClick handler error',
+                                                e
+                                            );
+                                        }
                                     }
-                                } catch {}
+                                } catch (e) {
+                                    console.error(
+                                        '[KakaoMap] marker click wrapper error',
+                                        e
+                                    );
+                                }
                                 try {
                                     const p = new window.kakao.maps.LatLng(
                                         m.lat,
@@ -331,7 +376,9 @@ export default function KakaoMap({
                                     )
                                         (mapRef.current as any).panTo(p);
                                     else mapRef.current.setCenter(p);
-                                } catch {}
+                                } catch (e) {
+                                    console.error('[KakaoMap] panTo error', e);
+                                }
                             }
                         );
                     }

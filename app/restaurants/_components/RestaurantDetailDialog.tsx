@@ -16,6 +16,10 @@ import {
     recommendRestaurant,
     createRestaurant,
     createRestaurantWithOpts,
+    fetchRestaurantById,
+    fetchSoloVoteSummary,
+    postSoloVote,
+    deleteSoloVote,
 } from '@/lib/restaurants';
 import RestaurantDetailDialogContent from './RestaurantDetailDialogContent';
 import RestaurantDetailActions from './RestaurantDetailActions';
@@ -26,6 +30,7 @@ type Props = {
     onOpenChange: (open: boolean) => void;
     onDeleted: (id: number) => void;
     onEditLocal?: (r: Restaurant) => void;
+    onCreated?: (r: Restaurant) => void;
 };
 
 export default function RestaurantDetailDialog({
@@ -34,6 +39,7 @@ export default function RestaurantDetailDialog({
     onOpenChange,
     onDeleted,
     onEditLocal,
+    onCreated,
 }: Props) {
     const router = useRouter();
     const { loginMember, isLogin } = useAuth();
@@ -107,14 +113,73 @@ export default function RestaurantDetailDialog({
     const [soloYes, setSoloYes] = useState<number>(initialYes);
     const [soloNo, setSoloNo] = useState<number>(initialNo);
     const [userSoloVote, setUserSoloVote] = useState<'yes' | 'no' | null>(null);
-    useEffect(() => {}, [
+
+    // Reset local solo-vote state whenever the `restaurant` prop changes.
+    // If the subsequent server probe/fetch fails, this prevents leftover
+    // values from a previously-opened restaurant from showing up.
+    useEffect(() => {
+        try {
+            setSoloYes(initialYes ?? 0);
+            setSoloNo(initialNo ?? 0);
+            // Load any persisted local vote for this restaurant id
+            try {
+                const key = `solo_vote_${(restaurant as any)?.id}`;
+                const v = localStorage.getItem(key);
+                if (v === 'yes' || v === 'no')
+                    setUserSoloVote(v as 'yes' | 'no');
+                else setUserSoloVote(null);
+            } catch (e) {
+                setUserSoloVote(null);
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, [
         restaurant,
+        initialYes,
+        initialNo,
         ownerId,
         isOwner,
         rawIsLocal,
         isLocalDetected,
         effectiveIsLocal,
     ]);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                if (!restaurant) return;
+                const id = (restaurant as any)?.id;
+                if (!id || Number(id) <= 0) return;
+                const summary = await fetchSoloVoteSummary(id);
+                if (!mounted) return;
+                setSoloYes(summary.yesCount ?? 0);
+                setSoloNo(summary.noCount ?? 0);
+                setUserSoloVote(
+                    summary.myChoice === null
+                        ? null
+                        : summary.myChoice
+                        ? 'yes'
+                        : 'no'
+                );
+                try {
+                    const key = `solo_vote_${(restaurant as any).id}`;
+                    if (summary.myChoice === null) localStorage.removeItem(key);
+                    else
+                        localStorage.setItem(
+                            key,
+                            summary.myChoice ? 'yes' : 'no'
+                        );
+                } catch (e) {}
+            } catch (e) {
+                // ignore fetch errors; keep local state
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [restaurant]);
 
     useEffect(() => {
         try {
@@ -168,7 +233,7 @@ export default function RestaurantDetailDialog({
         }
     };
 
-    const handleSoloVote = (vote: 'yes' | 'no') => {
+    const handleSoloVote = async (vote: 'yes' | 'no') => {
         if (!isLogin) {
             if (
                 confirm(
@@ -180,21 +245,303 @@ export default function RestaurantDetailDialog({
             }
             return;
         }
-
         const prev = userSoloVote;
+        let id = (restaurant as any)?.id;
+        const looksLikeKakao = Boolean(
+            (restaurant as any)?.placeUrl || (restaurant as any)?.placeId
+        );
+
+        // Ensure `id` actually exists on backend. It's possible a Kakao placeId was stored
+        // in `id` on client objects; in that case server GET/POST will 400. Try to probe
+        // the server for the id; if it fails and this looks like a Kakao place, create it.
+        if (id && Number(id) > 0) {
+            try {
+                // Probe server to verify that a Restaurant with this id exists.
+                // We use `fetchRestaurantById` which will throw for 4xx/5xx,
+                // allowing us to detect "not found" and create-asImported.
+                await fetchRestaurantById(id);
+            } catch (probeErr) {
+                // probe failed (likely 400/not found). If this is a Kakao-like item,
+                // create the restaurant on server and use returned id.
+                if (looksLikeKakao) {
+                    if (!isLogin) {
+                        if (
+                            confirm(
+                                '투표하려면 로그인해야 합니다. 로그인 페이지로 이동하시겠습니까?'
+                            )
+                        ) {
+                            router.push('/login');
+                            onOpenChange(false);
+                        }
+                        return;
+                    }
+
+                    try {
+                        const createPayload = {
+                            name: restaurant?.name ?? '',
+                            jibunAddress:
+                                (restaurant as any)?.jibunAddress ?? '',
+                            roadAddress: (restaurant as any)?.roadAddress ?? '',
+                            phone: (restaurant as any)?.phone ?? undefined,
+                            latitude:
+                                (restaurant as any)?.latitude ??
+                                (restaurant as any)?.lat ??
+                                0,
+                            longitude:
+                                (restaurant as any)?.longitude ??
+                                (restaurant as any)?.lng ??
+                                0,
+                        };
+
+                        let created: any = null;
+                        if (
+                            shouldCreateAsImported(
+                                effectiveIsLocal,
+                                looksLikeKakao
+                            )
+                        ) {
+                            created = await createRestaurantWithOpts(
+                                createPayload,
+                                {
+                                    asImported: true,
+                                }
+                            );
+                        } else {
+                            created = await createRestaurant(createPayload);
+                        }
+
+                        if (created && created.id) {
+                            id = created.id;
+                            const payload = buildSelectedPayload(
+                                Object.assign({}, created, {
+                                    placeUrl:
+                                        (created as any)?.placeUrl ||
+                                        (restaurant as any)?.placeUrl,
+                                })
+                            );
+                            storeSelected(payload);
+                            try {
+                                if (onCreated) onCreated(created as Restaurant);
+                            } catch (e) {
+                                console.error('onCreated handler failed', e);
+                            }
+                            console.debug(
+                                '[RestaurantDetailDialog] created for solo-vote',
+                                created
+                            );
+                        }
+                    } catch (e) {
+                        console.error(
+                            'create imported restaurant for solo-vote failed',
+                            e
+                        );
+                        window.alert(
+                            '투표를 위해 식당을 서버에 등록하는 중 오류가 발생했습니다.'
+                        );
+                        return;
+                    }
+                } else {
+                    // Not a kakao-like item and probe failed: abort
+                    window.alert('이 식당에 대한 서버 조회에 실패했습니다.');
+                    return;
+                }
+            }
+        }
+
+        // If no id yet (e.g. initial case), create it if needed
+        if (!id || Number(id) <= 0) {
+            if (!isLogin) {
+                // Shouldn't happen because we checked isLogin earlier, but guard just in case
+                if (
+                    confirm(
+                        '투표하려면 로그인해야 합니다. 로그인 페이지로 이동하시겠습니까?'
+                    )
+                ) {
+                    router.push('/login');
+                    onOpenChange(false);
+                }
+                return;
+            }
+
+            try {
+                const createPayload = {
+                    name: restaurant?.name ?? '',
+                    jibunAddress: (restaurant as any)?.jibunAddress ?? '',
+                    roadAddress: (restaurant as any)?.roadAddress ?? '',
+                    phone: (restaurant as any)?.phone ?? undefined,
+                    latitude:
+                        (restaurant as any)?.latitude ??
+                        (restaurant as any)?.lat ??
+                        0,
+                    longitude:
+                        (restaurant as any)?.longitude ??
+                        (restaurant as any)?.lng ??
+                        0,
+                };
+
+                const looksLikeKakao = Boolean(
+                    (restaurant as any)?.placeUrl ||
+                        (restaurant as any)?.placeId
+                );
+
+                let created: any = null;
+                if (shouldCreateAsImported(effectiveIsLocal, looksLikeKakao)) {
+                    created = await createRestaurantWithOpts(createPayload, {
+                        asImported: true,
+                    });
+                } else {
+                    created = await createRestaurant(createPayload);
+                }
+
+                if (created && created.id) {
+                    id = created.id;
+                    // store selected so other flows see it
+                    const payload = buildSelectedPayload(
+                        Object.assign({}, created, {
+                            placeUrl:
+                                (created as any)?.placeUrl ||
+                                (restaurant as any)?.placeUrl,
+                        })
+                    );
+                    storeSelected(payload);
+                    try {
+                        if (onCreated) onCreated(created as Restaurant);
+                    } catch (e) {
+                        console.error('onCreated handler failed', e);
+                    }
+                    console.debug(
+                        '[RestaurantDetailDialog] created (no-id case) ',
+                        created
+                    );
+                }
+            } catch (e) {
+                console.error(
+                    'create imported restaurant for solo-vote failed',
+                    e
+                );
+                window.alert(
+                    '투표를 위해 식당을 서버에 등록하는 중 오류가 발생했습니다.'
+                );
+                return;
+            }
+        }
+
+        // optimistic UI update
         if (prev === vote) {
             if (vote === 'yes') setSoloYes((s) => Math.max(0, s - 1));
             else setSoloNo((s) => Math.max(0, s - 1));
             setUserSoloVote(null);
             setLocalVote(null);
+            // call DELETE to remove vote on server
+            (async () => {
+                try {
+                    await deleteSoloVote(id);
+                } catch (e) {
+                    // rollback: fetch summary
+                    try {
+                        const summary = await fetchSoloVoteSummary(id);
+                        setSoloYes(summary.yesCount ?? 0);
+                        setSoloNo(summary.noCount ?? 0);
+                        setUserSoloVote(
+                            summary.myChoice === null
+                                ? null
+                                : summary.myChoice
+                                ? 'yes'
+                                : 'no'
+                        );
+                    } catch (e2) {}
+                }
+            })();
             return;
         }
+
+        // new vote or change
         if (vote === 'yes') setSoloYes((s) => s + 1);
         else setSoloNo((s) => s + 1);
         if (prev === 'yes') setSoloYes((s) => Math.max(0, s - 1));
         if (prev === 'no') setSoloNo((s) => Math.max(0, s - 1));
         setUserSoloVote(vote);
         setLocalVote(vote);
+
+        (async () => {
+            try {
+                let resp = await postSoloVote(id, vote === 'yes');
+
+                // Defensive fallback: if server returned a "no record" summary
+                // (myChoice === null) for a Kakao-like item, attempt to create
+                // the restaurant on the server as an imported entry and retry
+                // the vote once. This handles cases where the probe/create
+                // step earlier didn't persist the kakao item for any reason.
+                if (
+                    (resp.myChoice === null || resp.myChoice === undefined) &&
+                    looksLikeKakao
+                ) {
+                    try {
+                        const createPayload = {
+                            name: restaurant?.name ?? '',
+                            jibunAddress:
+                                (restaurant as any)?.jibunAddress ?? '',
+                            roadAddress: (restaurant as any)?.roadAddress ?? '',
+                            phone: (restaurant as any)?.phone ?? undefined,
+                            latitude:
+                                (restaurant as any)?.latitude ??
+                                (restaurant as any)?.lat ??
+                                0,
+                            longitude:
+                                (restaurant as any)?.longitude ??
+                                (restaurant as any)?.lng ??
+                                0,
+                        };
+                        const created = await createRestaurantWithOpts(
+                            createPayload,
+                            {
+                                asImported: true,
+                            }
+                        );
+                        console.debug(
+                            '[RestaurantDetailDialog] fallback created for solo-vote',
+                            created
+                        );
+                        if (created && created.id) {
+                            id = created.id;
+                            // Retry the vote once with the newly created id
+                            resp = await postSoloVote(id, vote === 'yes');
+                        }
+                    } catch (e) {
+                        console.error(
+                            'fallback create for solo-vote failed',
+                            e
+                        );
+                    }
+                }
+
+                setSoloYes(resp.yesCount ?? 0);
+                setSoloNo(resp.noCount ?? 0);
+                setUserSoloVote(
+                    resp.myChoice === null ? null : resp.myChoice ? 'yes' : 'no'
+                );
+                try {
+                    const key = `solo_vote_${id}`;
+                    if (resp.myChoice === null) localStorage.removeItem(key);
+                    else
+                        localStorage.setItem(key, resp.myChoice ? 'yes' : 'no');
+                } catch (e) {}
+            } catch (e) {
+                // rollback by fetching summary
+                try {
+                    const summary = await fetchSoloVoteSummary(id);
+                    setSoloYes(summary.yesCount ?? 0);
+                    setSoloNo(summary.noCount ?? 0);
+                    setUserSoloVote(
+                        summary.myChoice === null
+                            ? null
+                            : summary.myChoice
+                            ? 'yes'
+                            : 'no'
+                    );
+                } catch (e2) {}
+            }
+        })();
     };
 
     const handleDelete = async () => {
@@ -359,7 +706,7 @@ export default function RestaurantDetailDialog({
                 name: restaurant.name ?? '',
                 jibunAddress: (restaurant as any)?.jibunAddress ?? '',
                 roadAddress: (restaurant as any)?.roadAddress ?? '',
-                phone: (restaurant as any)?.phone ?? '',
+                phone: (restaurant as any)?.phone ?? undefined,
                 latitude:
                     (restaurant as any)?.latitude ??
                     (restaurant as any)?.lat ??
@@ -417,7 +764,7 @@ export default function RestaurantDetailDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[520px]">
+            <DialogContent className="sm:max-w-[520px]" showCloseButton={false}>
                 <DialogHeader>
                     <DialogTitle>{restaurant?.name}</DialogTitle>
                 </DialogHeader>
