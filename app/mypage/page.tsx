@@ -51,6 +51,19 @@ interface User {
   };
 }
 
+interface Post {
+  id: number;
+  title: string;
+  postType: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Comment {}
+
 export default function MyPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
@@ -65,6 +78,10 @@ export default function MyPage() {
   const [user, setUser] = useState<User | null>(null);
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [loading, setLoading] = useState(false);
+  const [myPosts, setMyPosts] = useState<Post[] | null>([]);
+  const [postPage, setPostPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const pageSize = 5;
 
   const smallGroupChats = [
     {
@@ -109,44 +126,44 @@ export default function MyPage() {
       ? groupBuyingChats.filter((c) => c.status === "완료")
       : [];
 
-  const myPosts = [
-    {
-      id: 1,
-      category: "꿀팁",
-      title: "원룸에서 효율적으로 수납하는 10가지 방법",
-      views: 1247,
-      likes: 89,
-      comments: 23,
-      date: "2일 전",
-    },
-    {
-      id: 2,
-      category: "혼밥",
-      title: "5분만에 완성하는 간단 혼밥 레시피",
-      views: 892,
-      likes: 67,
-      comments: 15,
-      date: "5일 전",
-    },
-    {
-      id: 3,
-      category: "정보",
-      title: "1인 가구 혜택 정리",
-      views: 654,
-      likes: 45,
-      comments: 12,
-      date: "1주 전",
-    },
-    {
-      id: 4,
-      category: "꿀팁",
-      title: "전기세 절약 방법",
-      views: 543,
-      likes: 38,
-      comments: 9,
-      date: "2주 전",
-    },
-  ];
+  // const myPosts = [
+  //   {
+  //     id: 1,
+  //     category: "꿀팁",
+  //     title: "원룸에서 효율적으로 수납하는 10가지 방법",
+  //     views: 1247,
+  //     likes: 89,
+  //     comments: 23,
+  //     date: "2일 전",
+  //   },
+  //   {
+  //     id: 2,
+  //     category: "혼밥",
+  //     title: "5분만에 완성하는 간단 혼밥 레시피",
+  //     views: 892,
+  //     likes: 67,
+  //     comments: 15,
+  //     date: "5일 전",
+  //   },
+  //   {
+  //     id: 3,
+  //     category: "정보",
+  //     title: "1인 가구 혜택 정리",
+  //     views: 654,
+  //     likes: 45,
+  //     comments: 12,
+  //     date: "1주 전",
+  //   },
+  //   {
+  //     id: 4,
+  //     category: "꿀팁",
+  //     title: "전기세 절약 방법",
+  //     views: 543,
+  //     likes: 38,
+  //     comments: 9,
+  //     date: "2주 전",
+  //   },
+  // ];
 
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
@@ -194,6 +211,7 @@ export default function MyPage() {
     { id: 2, nickname: "카페러버", posts: 56 },
   ];
 
+  // 마이페이지 유저 정보 불러오기
   useEffect(() => {
     if (isLogin && loginMember?.id) {
       const getMemberDetail = async () => {
@@ -215,8 +233,82 @@ export default function MyPage() {
       };
 
       getMemberDetail();
+      getMemberPosts();
     }
   }, [isLogin, loginMember]);
+
+  const getMemberPosts = async () => {
+    const cat = convertCategoryToEnum(postCategory);
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/posts?page=${
+          postPage - 1
+        }&size=${pageSize}&postType=${cat}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 게시글 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      const posts = result.content.map((item: any) => ({
+        ...item,
+        postType: convertEnumToCategory(item.postType),
+      }));
+      setTotalPages(result.totalPages);
+      setMyPosts(posts.content ?? posts ?? []);
+    } catch (err) {
+      console.error("내 게시글 불러오기 실패:", err);
+    }
+  };
+
+  function convertCategoryToEnum(category: string | null | undefined) {
+    switch (category) {
+      case "자유":
+        return "FREE";
+      case "꿀팁":
+        return "TIP";
+      case "정보":
+        return "INFO";
+      case "인기":
+        return "HOT";
+      default:
+        return "ALL";
+    }
+  }
+
+  function convertEnumToCategory(category: string | null | undefined) {
+    switch (category) {
+      case "FREE":
+        return "자유";
+      case "TIP":
+        return "꿀팁";
+      case "INFO":
+        return "정보";
+      case "HOT":
+        return "인기";
+      default:
+        return "기타";
+    }
+  }
+
+  // 카테고리, 페이지 반영하여 내 게시글 불러오기
+  useEffect(() => {
+    getMemberPosts();
+  }, [postPage, postCategory]);
 
   // 저장된 레시피 목록 불러오기
   useEffect(() => {
@@ -262,15 +354,7 @@ export default function MyPage() {
     setExpandedRecipes(newExpanded);
   };
 
-  const filteredPosts =
-    postCategory === "전체"
-      ? myPosts
-      : myPosts.filter((post) => post.category === postCategory);
-
-  const postCategories = [
-    "전체",
-    ...Array.from(new Set(myPosts.map((post) => post.category))),
-  ];
+  const postCategories = ["전체", "자유", "꿀팁", "정보"];
 
   useEffect(() => {
     const check = async () => {
@@ -577,6 +661,7 @@ export default function MyPage() {
                     <CardContent>
                       {activeTab === "posts" && (
                         <div className="space-y-4">
+                          {/* 카테고리 버튼 */}
                           <div className="flex flex-wrap gap-2 pb-2 border-b">
                             {postCategories.map((category) => (
                               <Button
@@ -587,15 +672,18 @@ export default function MyPage() {
                                     : "outline"
                                 }
                                 size="sm"
-                                onClick={() => setPostCategory(category)}
+                                onClick={() => {
+                                  setPostCategory(category);
+                                  setPostPage(1); // 카테고리 변경 시 1페이지로 이동
+                                }}
                               >
                                 {category}
                               </Button>
                             ))}
                           </div>
-
+                          {/* 게시글 리스트 */}
                           <div className="space-y-3">
-                            {filteredPosts.map((post) => (
+                            {myPosts?.map((post) => (
                               <Link
                                 key={post.id}
                                 href={`/onelife/post/${post.id}`}
@@ -606,27 +694,28 @@ export default function MyPage() {
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-2">
                                           <Badge variant="secondary">
-                                            {post.category}
+                                            {post.postType}
                                           </Badge>
                                           <span className="text-xs text-muted-foreground">
-                                            {post.date}
+                                            {post.createdAt}
                                           </span>
                                         </div>
                                         <h4 className="font-semibold mb-2">
                                           {post.title}
                                         </h4>
+
                                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                           <div className="flex items-center gap-1">
                                             <Eye className="h-3 w-3" />
-                                            <span>{post.views}</span>
+                                            <span>{post.viewCount}</span>
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <Heart className="h-3 w-3" />
-                                            <span>{post.likes}</span>
+                                            <span>{post.likeCount}</span>
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <MessageCircle className="h-3 w-3" />
-                                            <span>{post.comments}</span>
+                                            <span>{post.commentCount}</span>
                                           </div>
                                         </div>
                                       </div>
@@ -635,7 +724,41 @@ export default function MyPage() {
                                 </Card>
                               </Link>
                             ))}
+
+                            {/* 게시글이 없을 때 */}
+                            {myPosts?.length === 0 && (
+                              <p className="text-center text-sm text-muted-foreground py-4">
+                                게시글이 없습니다.
+                              </p>
+                            )}
                           </div>
+
+                          {/* 페이징 UI */}
+                          {totalPages > 1 && (
+                            <div className="flex justify-center items-center gap-4 mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={postPage === 1}
+                                onClick={() => setPostPage(postPage - 1)}
+                              >
+                                이전
+                              </Button>
+
+                              <span className="text-sm">
+                                {postPage} / {totalPages}
+                              </span>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={postPage === totalPages}
+                                onClick={() => setPostPage(postPage + 1)}
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -666,7 +789,9 @@ export default function MyPage() {
                                           variant="secondary"
                                           className="text-xs"
                                         >
-                                          {mapCategoryToDisplay(recipe.category)}
+                                          {mapCategoryToDisplay(
+                                            recipe.category
+                                          )}
                                         </Badge>
                                       </div>
                                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -700,7 +825,9 @@ export default function MyPage() {
                                       <div className="flex items-center gap-2">
                                         <Users className="h-4 w-4 text-muted-foreground" />
                                         <span className="text-sm">
-                                          {mapServingsToDisplay(recipe.servings)}
+                                          {mapServingsToDisplay(
+                                            recipe.servings
+                                          )}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -719,10 +846,7 @@ export default function MyPage() {
                                       </h3>
                                       <div className="grid grid-cols-2 gap-2">
                                         {recipe.ingredients.map(
-                                          (
-                                            ingredient: string,
-                                            idx: number
-                                          ) => (
+                                          (ingredient: string, idx: number) => (
                                             <div
                                               key={idx}
                                               className="flex items-center gap-2 text-sm"
@@ -742,7 +866,10 @@ export default function MyPage() {
                                       <div className="space-y-3">
                                         {recipe.steps.map(
                                           (step: string, idx: number) => (
-                                            <div key={idx} className="flex gap-3">
+                                            <div
+                                              key={idx}
+                                              className="flex gap-3"
+                                            >
                                               <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
                                                 {idx + 1}
                                               </div>
