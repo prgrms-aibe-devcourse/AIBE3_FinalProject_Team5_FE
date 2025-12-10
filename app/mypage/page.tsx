@@ -69,6 +69,15 @@ interface Comment {
   createdAt: string;
 }
 
+interface Chat {
+  chatRoomId: number;
+  name: string;
+  currentParticipants: number;
+  status: string;
+  maxParticipants: number;
+  createdAt: string;
+}
+
 export default function MyPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
@@ -83,57 +92,32 @@ export default function MyPage() {
   const [user, setUser] = useState<User | null>(null);
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [loading, setLoading] = useState(false);
+  const [activeChats, setActiveChats] = useState<Chat[] | null>([]);
+  const [completedChats, setCompletedChats] = useState<Chat[] | null>([]);
+  const [groupChats, setGroupChats] = useState<Chat[] | null>([]);
+  const [groupChatPage, setGroupChatPage] = useState(1);
+  const [groupBuyChats, setGroupBuyChats] = useState<Chat[] | null>([]);
+  const [groupBuyChatPage, setGroupBuyChatPage] = useState(1);
   const [myPosts, setMyPosts] = useState<Post[] | null>([]);
   const [postPage, setPostPage] = useState(1);
   const [myComments, setMyComments] = useState<Comment[] | null>([]);
   const [commentPage, setCommentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const pageSize = 5;
-
   const postCategories = ["전체", "자유", "꿀팁", "정보"];
 
-  const smallGroupChats = [
-    {
-      id: 1,
-      title: "홍대 저녁 식사 모임",
-      status: "진행중",
-      participants: 3,
-      date: "12월 12일",
-    },
-    {
-      id: 2,
-      title: "강남 카페 스터디",
-      status: "진행중",
-      participants: 4,
-      date: "12월 10일",
-    },
-  ];
+  // 로그인 여부 확인
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
 
-  const groupBuyingChats = [
-    {
-      id: 3,
-      title: "코스트코 과일 공동구매",
-      status: "진행중",
-      participants: 7,
-      date: "12월 15일",
-    },
-    {
-      id: 4,
-      title: "세제 대용량 공동구매",
-      status: "완료",
-      participants: 8,
-      date: "12월 5일",
-    },
-  ];
-
-  const activeChats =
-    chatType === "small-group"
-      ? smallGroupChats
-      : groupBuyingChats.filter((c) => c.status === "진행중");
-  const completedChats =
-    chatType === "group-buying"
-      ? groupBuyingChats.filter((c) => c.status === "완료")
-      : [];
+    check();
+  }, []);
 
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
@@ -194,6 +178,114 @@ export default function MyPage() {
       getMemberPosts();
     }
   }, [isLogin, loginMember]);
+
+  const arrange = () => {
+    if (chatType === "small-group") {
+      setActiveChats(groupChats ?? []);
+      setCompletedChats([]);
+    } else {
+      setActiveChats(
+        (groupBuyChats ?? []).filter((c) => c.status === "진행중")
+      );
+      setCompletedChats(
+        (groupBuyChats ?? []).filter((c) => c.status === "완료")
+      );
+    }
+  };
+
+  // 사용자가 참여중인 소그룹 목록 불러오기
+  const getMemberGroupChats = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/groups?page=${
+          groupChatPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 소그룹 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      setTotalPages(result.totalPages);
+      setGroupChats(result.content);
+      console.log("결과", result.content);
+    } catch (err) {
+      console.error("내 소그룹 불러오기 실패:", err);
+    }
+  };
+
+  // 사용자가 참여중인 공동구매 목록 불러오기
+  const getMemberGroupBuyChats = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/group-buys?page=${
+          groupBuyChatPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 공동구매 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+      if (!result) return;
+
+      const chat = result.content.map((item: any) => ({
+        ...item,
+        status: convertByStatus(item.status),
+      }));
+
+      setTotalPages(result.totalPages);
+      setGroupBuyChats(chat);
+    } catch (err) {
+      console.error("내 공동구매 불러오기 실패:", err);
+    }
+  };
+
+  // 공동구매 상태 변환기
+  const convertByStatus = (status: string | null | undefined) => {
+    switch (status) {
+      case "RECRUITING":
+        return "진행중";
+      case "COMPLETED":
+        return "완료";
+      default:
+        return "완료";
+    }
+  };
+
+  useEffect(() => {
+    if (chatType == "small-group") {
+      getMemberGroupChats();
+    } else {
+      getMemberGroupBuyChats();
+    }
+  }, [chatType]);
+  useEffect(() => {
+    arrange();
+  }, [chatType, groupBuyChats, groupChats]);
 
   // 사용자가 작성한 게시글 불러오기
   const getMemberPosts = async () => {
@@ -264,15 +356,17 @@ export default function MyPage() {
     }
   }
 
-  // 카테고리, 페이지 반영하여 내 게시글 불러오기
   useEffect(() => {
     getMemberPosts();
-  }, [postPage, postCategory]);
+  }, [postPage]);
 
-  // 저장된 레시피 목록 불러오기
+  // 저장된 레시피, 소그룹, 공동구매 목록 불러오기
   useEffect(() => {
     if (isLogin && loading) {
-      loadSavedRecipes();
+      loadSavedRecipes(); // 레시피
+      getMemberGroupChats(); // 소그룹
+      getMemberPosts(); // 게시글
+      arrange();
     }
   }, [isLogin, loading]);
 
@@ -362,19 +456,6 @@ export default function MyPage() {
 
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  // 로그인 여부 확인
-  useEffect(() => {
-    const check = async () => {
-      const login = await reloadMember();
-      if (login === false) {
-        alert("로그인 후 이용해 주세요.");
-        router.push("/login");
-      }
-    };
-
-    check();
-  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -529,59 +610,72 @@ export default function MyPage() {
                     <CardContent className="space-y-4">
                       <div>
                         <h4 className="text-sm font-semibold mb-3">
-                          진행중 ({activeChats.length})
+                          진행중 ({activeChats?.length})
                         </h4>
                         <div className="space-y-2">
-                          {activeChats.map((chat) => (
-                            <Link
-                              key={chat.id}
-                              href={`/local/${chatType}/${chat.id}/chat`}
-                            >
-                              <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <h5 className="font-medium">
-                                          {chat.title}
-                                        </h5>
-                                        <Badge className="bg-green-500">
-                                          {chat.status}
-                                        </Badge>
-                                      </div>
-                                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                                        <div className="flex items-center gap-1">
-                                          <Users className="h-3 w-3" />
-                                          <span>{chat.participants}명</span>
+                          {activeChats?.map((chat) => {
+                            const link =
+                              chatType === "small-group"
+                                ? `/groups/${chat.chatRoomId}/chat`
+                                : `/group-buying/${chat.chatRoomId}`;
+
+                            return (
+                              <Link key={chat.chatRoomId} href={link}>
+                                <Card className="hover:shadow-md transition-shadow">
+                                  <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <h5 className="font-medium">
+                                            {chat.name}
+                                          </h5>
+
+                                          {chatType === "group-buying" && (
+                                            <Badge className="bg-green-500">
+                                              {chat.status}
+                                            </Badge>
+                                          )}
                                         </div>
-                                        <span>{chat.date}</span>
+
+                                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                          <div className="flex items-center gap-1">
+                                            <Users className="h-3 w-3" />
+                                            <span>
+                                              {chat.currentParticipants}명 /{" "}
+                                              {chat.maxParticipants}명
+                                            </span>
+                                          </div>
+                                          <span>
+                                            {formatDate(chat.createdAt)}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </Link>
-                          ))}
+                                  </CardContent>
+                                </Card>
+                              </Link>
+                            );
+                          })}
                         </div>
                       </div>
 
                       {chatType === "group-buying" &&
-                        completedChats.length > 0 && (
+                        (completedChats ?? []).length > 0 && (
                           <>
                             <Separator />
                             <div>
                               <h4 className="text-sm font-semibold mb-3">
-                                완료 ({completedChats.length})
+                                완료 ({completedChats?.length})
                               </h4>
                               <div className="space-y-2">
-                                {completedChats.map((chat) => (
-                                  <Card key={chat.id}>
+                                {completedChats?.map((chat) => (
+                                  <Card key={chat.chatRoomId}>
                                     <CardContent className="p-4">
                                       <div className="flex items-center justify-between">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 mb-1">
                                             <h5 className="font-medium text-muted-foreground">
-                                              {chat.title}
+                                              {chat.name}
                                             </h5>
                                             <Badge variant="outline">
                                               {chat.status}
@@ -590,9 +684,14 @@ export default function MyPage() {
                                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                                             <div className="flex items-center gap-1">
                                               <Users className="h-3 w-3" />
-                                              <span>{chat.participants}명</span>
+                                              <span>
+                                                {chat.currentParticipants}명 /{" "}
+                                                {chat.maxParticipants}명
+                                              </span>
                                             </div>
-                                            <span>{chat.date}</span>
+                                            <span>
+                                              {formatDate(chat.createdAt)}
+                                            </span>
                                           </div>
                                         </div>
                                       </div>
