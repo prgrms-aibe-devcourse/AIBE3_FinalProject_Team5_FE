@@ -402,9 +402,16 @@ export default function ReviewsPage() {
 
     return (
         <div className="p-6 max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4">리뷰</h2>
+            <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-2xl font-bold">리뷰</h2>
+                <button
+                    onClick={() => router.push('/restaurants')}
+                    className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
+                >
+                    식당 지도 돌아가기
+                </button>
+            </div>
 
-            {/* Restaurant header (from dialog via sessionStorage or backend fallback) */}
             {restaurantInfo && (
                 <div className="mb-6 flex items-center gap-4">
                     <div className="w-24 h-24 relative rounded overflow-hidden bg-gray-100">
@@ -503,7 +510,6 @@ export default function ReviewsPage() {
                                 </div>
                             </div>
                             <div className="mt-2 text-sm">{r.content}</div>
-                            {/* deletion only shown if authored by current user — backend enforces auth */}
                             <div className="mt-2 text-right">
                                 {loginMember &&
                                 r.memberId &&

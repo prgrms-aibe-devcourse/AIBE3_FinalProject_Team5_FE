@@ -13,7 +13,10 @@ type Props = {
     center: { lat: number; lng: number };
     markers: Marker[];
     onMapClick?: (pos: { lat: number; lng: number }) => void;
-    onMarkerClick?: (id: number | string) => void;
+    onMarkerClick?: (
+        id: number | string | undefined,
+        pos?: { lat: number; lng: number }
+    ) => void;
     highlightId?: number | string | null;
 };
 
