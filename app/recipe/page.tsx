@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
   Sparkles,
   Clock,
   Users,
@@ -29,6 +39,7 @@ import {
   generateRecipes,
   saveRecipe,
   fetchGeneratedRecipes,
+  fetchSavedRecipes,
   type RecipeResponse,
   mapServingsToNumber,
   mapCategoryToDisplay,
@@ -51,14 +62,37 @@ export default function RecipePage() {
   const [servings, setServings] = useState("");
   const [generatedRecipes, setGeneratedRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingGenerated, setIsLoadingGenerated] = useState(false);
-  const { isLogin } = useAuth();
+  const [savedRecipeIds, setSavedRecipeIds] = useState<Set<number>>(new Set());
+  const [savedRecipeKeys, setSavedRecipeKeys] = useState<Set<string>>(new Set());
+  const [showSparkle, setShowSparkle] = useState(false);
+  const sparkleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const { isLogin, setAccessToken, setApiKey } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const router = useRouter();
 
   // 생성된 레시피 목록 불러오기
   useEffect(() => {
     if (isLogin) {
       loadGeneratedRecipes();
+      loadSavedRecipes();
+    } else {
+      setSavedRecipeIds(new Set());
+      setSavedRecipeKeys(new Set());
     }
   }, [isLogin]);
+
+  useEffect(() => {
+    return () => {
+      if (sparkleTimerRef.current) {
+        clearTimeout(sparkleTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadGeneratedRecipes = async () => {
     try {
@@ -69,6 +103,18 @@ export default function RecipePage() {
       console.error("생성된 레시피 목록 불러오기 실패:", error);
     } finally {
       setIsLoadingGenerated(false);
+    }
+  };
+
+  const loadSavedRecipes = async () => {
+    try {
+      const saved = await fetchSavedRecipes();
+      setSavedRecipeIds(new Set(saved.map((item) => item.id)));
+      setSavedRecipeKeys(
+        new Set(saved.map((item) => `${item.title}::${item.description}`))
+      );
+    } catch (error) {
+      console.error("저장된 레시피 목록 불러오기 실패:", error);
     }
   };
 
@@ -94,11 +140,21 @@ export default function RecipePage() {
       setCookingTime("");
       setDifficulty("");
       setServings("");
+      if (sparkleTimerRef.current) {
+        clearTimeout(sparkleTimerRef.current);
+      }
+      setShowSparkle(true);
+      sparkleTimerRef.current = setTimeout(() => setShowSparkle(false), 2200);
 
       // 로그인한 경우 생성된 레시피 목록 새로고침
       if (isLogin) {
         loadGeneratedRecipes();
+        loadSavedRecipes();
       }
+      // 생성된 3개 카드가 보이도록 스크롤을 맨 아래로 이동
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 200);
     } catch (error) {
       console.error("레시피 생성 실패:", error);
       alert("레시피 생성에 실패했습니다. 다시 시도해주세요.");
@@ -109,7 +165,13 @@ export default function RecipePage() {
 
   const handleSaveRecipe = async (recipe: RecipeResponse) => {
     if (!isLogin) {
-      alert("로그인이 필요합니다.");
+      setShowLoginModal(true);
+      return;
+    }
+
+    const key = `${recipe.title}::${recipe.description}`;
+    if (savedRecipeIds.has(recipe.id) || savedRecipeKeys.has(key)) {
+      alert("이미 저장한 레시피입니다.");
       return;
     }
 
@@ -124,9 +186,20 @@ export default function RecipePage() {
         ingredients: recipe.ingredients,
         steps: recipe.steps,
       });
+      setSavedRecipeIds((prev) => {
+        const updated = new Set(prev);
+        updated.add(recipe.id);
+        return updated;
+      });
+      setSavedRecipeKeys((prev) => {
+        const updated = new Set(prev);
+        updated.add(key);
+        return updated;
+      });
       alert("레시피가 저장되었습니다.");
       // 생성된 레시피 목록 새로고침
       loadGeneratedRecipes();
+      loadSavedRecipes();
     } catch (error) {
       console.error("레시피 저장 실패:", error);
       alert("레시피 저장에 실패했습니다. 다시 시도해주세요.");
@@ -167,7 +240,7 @@ export default function RecipePage() {
                     <div className="text-sm text-muted-foreground text-center py-4">
                       {isLogin
                         ? "생성된 레시피가 없습니다."
-                        : "로그인 후 생성된 레시피를 확인할 수 있습니다."}
+                        : "로그인 후 생성된 레시피를 확인할 수 있어요."}
                     </div>
                   ) : (
                     generatedRecipes.map((recipe) => (
@@ -217,7 +290,7 @@ export default function RecipePage() {
                 </h1>
                 <p className="text-lg text-muted-foreground">
                   재료나 원하는 요리를 입력하면 AI가 맞춤 레시피를
-                  추천해드립니다
+                  추천해줘요!
                 </p>
               </div>
 
@@ -232,6 +305,12 @@ export default function RecipePage() {
                         placeholder="예: 냉장고에 김치와 밥이 있어요. 간단한 요리 추천해주세요."
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSubmit(e as any);
+                          }
+                        }}
                         className="min-h-[120px]"
                         required
                       />
@@ -376,7 +455,9 @@ export default function RecipePage() {
                     <Card
                       key={recipe.id || index}
                       id={`recipe-${recipe.id || index}`}
-                      className="overflow-hidden"
+                      className={`overflow-hidden ${
+                        showSparkle ? "recipe-sparkle" : ""
+                      }`}
                     >
                       <CardHeader
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -473,14 +554,42 @@ export default function RecipePage() {
                             <Button
                               className="flex-1"
                               onClick={() => handleSaveRecipe(recipe)}
+                              disabled={
+                                savedRecipeIds.has(recipe.id) ||
+                                savedRecipeKeys.has(
+                                  `${recipe.title}::${recipe.description}`
+                                )
+                              }
+                              variant={
+                                savedRecipeIds.has(recipe.id) ||
+                                savedRecipeKeys.has(
+                                  `${recipe.title}::${recipe.description}`
+                                )
+                                  ? "secondary"
+                                  : "default"
+                              }
                             >
-                              레시피 저장하기
+                              {savedRecipeIds.has(recipe.id) ||
+                              savedRecipeKeys.has(
+                                `${recipe.title}::${recipe.description}`
+                              )
+                                ? "이미 저장됨"
+                                : "레시피 저장하기"}
                             </Button>
                           </div>
+                          {(savedRecipeIds.has(recipe.id) ||
+                            savedRecipeKeys.has(
+                              `${recipe.title}::${recipe.description}`
+                            )) && (
+                            <p className="text-xs text-muted-foreground text-right">
+                              이미 저장한 레시피예요
+                            </p>
+                          )}
                         </CardContent>
                       )}
                     </Card>
                   ))}
+                  <div ref={bottomRef} />
                 </div>
               )}
             </div>
@@ -489,6 +598,167 @@ export default function RecipePage() {
       </main>
 
       <Footer />
+
+      {/* 로그인 모달 */}
+      <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="space-y-4">
+            <DialogTitle className="text-center text-lg leading-relaxed">
+              <div>간편하게 가입하고</div>
+              <div>나만의 레시피를 저장해 보세요!</div>
+            </DialogTitle>
+          </DialogHeader>
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl font-bold text-center">
+                로그인
+              </CardTitle>
+              <p className="text-sm text-muted-foreground text-center">
+                OneLife에 오신 것을 환영합니다
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setLoginLoading(true);
+                  setLoginError("");
+
+                  try {
+                    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+                    const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        email: loginEmail,
+                        password: loginPassword,
+                      }),
+                      credentials: "include",
+                    });
+
+                    if (!res.ok) {
+                      throw new Error(
+                        "로그인 실패: 이메일 또는 비밀번호를 확인하세요."
+                      );
+                    }
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                      const authHeader = res.headers.get("Authorization");
+
+                      if (authHeader) {
+                        const parts = authHeader.split(" ");
+
+                        if (parts.length >= 3) {
+                          const [, apiKey, accessToken] = parts;
+                          setApiKey(apiKey);
+                          setAccessToken(accessToken);
+                        }
+                      }
+                      setShowLoginModal(false);
+                      setLoginEmail("");
+                      setLoginPassword("");
+                      // 저장된 레시피 목록 새로고침
+                      loadSavedRecipes();
+                    }
+                  } catch (err: any) {
+                    setLoginError(err.message);
+                    console.error("Login error:", err);
+                  } finally {
+                    setLoginLoading(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">이메일</label>
+                  <Input
+                    type="email"
+                    placeholder="example@email.com"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">비밀번호</label>
+                  <Input
+                    type="password"
+                    placeholder="비밀번호를 입력하세요"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {loginError && (
+                  <p className="text-red-500 text-sm">{loginError}</p>
+                )}
+
+                <Button type="submit" className="w-full" disabled={loginLoading}>
+                  {loginLoading ? "로그인 중..." : "로그인"}
+                </Button>
+              </form>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">
+                    또는
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => {
+                  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+                  const frontedBaseUrl =
+                    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+                  const redirectUrl = encodeURIComponent(`${frontedBaseUrl}`);
+                  const kakaoLoginUrl = `${apiBaseUrl}/oauth2/authorization/kakao?redirectUrl=${redirectUrl}`;
+                  window.location.href = kakaoLoginUrl;
+                }}
+                style={{
+                  backgroundColor: "#FEE500",
+                  borderColor: "#FEE500",
+                  color: "#000000",
+                }}
+              >
+                <svg
+                  className="mr-2 h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 3C6.477 3 2 6.477 2 10.5c0 2.636 1.752 4.944 4.4 6.32-.192.71-.633 2.366-.732 2.742-.118.448.164.441.345.32.145-.096 2.118-1.405 2.923-1.946.61.083 1.233.126 1.864.126 5.523 0 10-3.477 10-7.5S17.523 3 12 3z" />
+                </svg>
+                카카오 로그인
+              </Button>
+
+              <div className="text-center text-sm">
+                <span className="text-muted-foreground">
+                  아직 회원이 아니신가요?{" "}
+                </span>
+                <Link
+                  href="/signup"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setShowLoginModal(false)}
+                >
+                  회원가입
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
