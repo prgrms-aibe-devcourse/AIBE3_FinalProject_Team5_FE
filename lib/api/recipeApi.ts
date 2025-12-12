@@ -87,6 +87,7 @@ export interface RecipeResponse {
   ingredients: string[];
   steps: string[];
   status?: string;
+  youtubeUrl?: string;
 }
 
 export interface RecipeGenerateRequest {
@@ -107,6 +108,7 @@ export interface RecipeSaveRequest {
   servings: number;
   ingredients: string[];
   steps: string[];
+  youtubeUrl?: string;
 }
 
 /**
@@ -252,5 +254,60 @@ export async function deleteRecipe(recipeId: number): Promise<void> {
   );
 
   await handleResponse<void>(response);
+}
+
+/**
+ * 공유 링크 응답 타입
+ */
+export interface ShareLinkResponse {
+  shareToken: string;
+  shareUrl: string;
+}
+
+export interface YoutubeVideoResponse {
+  videoId: string;
+  title?: string;
+  thumbnailUrl?: string;
+  embedUrl: string;
+}
+
+/**
+ * 공유 링크 생성 (로그인 필수)
+ */
+export async function createShareLink(recipeId: number): Promise<ShareLinkResponse> {
+  const frontendBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || window.location.origin;
+  const url = `${API_BASE_URL}/api/v1/recipes/${recipeId}/share?frontendBaseUrl=${encodeURIComponent(frontendBaseUrl)}`;
+  
+  const response = await fetch(url, getFetchOptions("POST"));
+
+  return handleResponse<ShareLinkResponse>(response);
+}
+
+/**
+ * 공유 링크로 레시피 조회 (공개 API)
+ */
+export async function fetchRecipeByShareToken(shareToken: string): Promise<RecipeResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/recipes/shared/${shareToken}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+    }
+  );
+
+  return handleResponse<RecipeResponse>(response);
+}
+
+/**
+ * 레시피 제목으로 유튜브 영상 검색
+ */
+export async function fetchYoutubeVideoByTitle(title: string): Promise<YoutubeVideoResponse> {
+  const url = `${API_BASE_URL}/api/v1/recipes/youtube?title=${encodeURIComponent(title)}`;
+  const response = await fetch(url, getFetchOptions());
+
+  return handleResponse<YoutubeVideoResponse>(response);
 }
 
