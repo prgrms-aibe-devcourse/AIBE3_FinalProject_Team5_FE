@@ -45,7 +45,7 @@ export default function OneLifePage() {
           type:
             selectedCategory === "all" ? "ALL" : selectedCategory.toUpperCase(),
         });
-
+        console.log("게시글:", data.data.content);
         setPosts(data.data.content);
         setTotalCount(data.data.totalElements);
       } catch (e) {
@@ -118,13 +118,7 @@ export default function OneLifePage() {
                     <span className="text-sm text-muted-foreground">
                       총 {totalCount}개의 게시글
                     </span>
-                    <select className="text-sm border rounded-md px-3 py-1.5 bg-background">
-                      <option>최신순</option>
-                      <option>인기순</option>
-                      <option>댓글순</option>
-                    </select>
                   </div>
-
                   <PaginatedPosts
                     posts={posts}
                     selectedCategory={selectedCategory}

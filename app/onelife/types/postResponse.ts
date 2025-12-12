@@ -2,7 +2,7 @@ export interface PostResponse {
   id: number;
   title: string;
   content: string;
-  attachmentPath?: string;
+  imageUrls?: string[];
   memberNickname: string;
   memberId: number;
   postType: string;
@@ -17,12 +17,14 @@ export interface PostResponse {
   admin: boolean;
   comments?: number;
   likes?: number;
+  bookmarked?: boolean;
 }
 
 export interface PostRequestDto {
   title: string;
   content: string;
-  attachmentPath?: string | null;
   postType: string;
   tags: string[];
+  files?: File[];
+  remainFileUrls?: string[];
 }

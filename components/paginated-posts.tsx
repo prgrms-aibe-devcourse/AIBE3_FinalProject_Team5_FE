@@ -4,13 +4,13 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import BookmarkButton from "@/app/bookmark/BookmarkButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Eye,
   MessageCircle,
   Heart,
-  Share2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -59,7 +59,14 @@ export default function PaginatedPosts({
         {visible.map((post) => (
           <Link key={post.id} href={`/onelife/post/${post.id}`}>
             <Card className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
+              <CardContent className="relative p-6">
+                <div className="absolute top-2 right-2 z-10">
+                  <BookmarkButton
+                    postId={post.id}
+                    type="POST"
+                    isBookmarked={post.bookmarked}
+                  />
+                </div>
                 <div className="flex gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -121,17 +128,12 @@ export default function PaginatedPosts({
                             <span>{post.comments}</span>
                           </div>
                         )}
-                        <div className="flex items-center gap-1">
-                          <Share2 className="h-4 w-4" />
-                          <span>{post.shares}</span>
-                        </div>
                       </div>
                     </div>
                   </div>
-
                   <div className="hidden sm:block w-40 h-32 flex-shrink-0">
                     <Image
-                      src={post.image || "/placeholder.svg"}
+                      src={post.imageUrls?.[0] || "/placeholder.svg"}
                       alt={post.title}
                       width={160}
                       height={128}

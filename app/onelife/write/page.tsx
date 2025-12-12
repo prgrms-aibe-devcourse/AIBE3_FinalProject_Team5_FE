@@ -27,51 +27,56 @@ export default function WritePostPage() {
   const [category, setCategory] = useState("꿀팁");
   const [tags, setTags] = useState("");
   const [content, setContent] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newImages: string[] = [];
-      Array.from(files).forEach((file) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            setImages([...images, ...newImages]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+    if (e.target.files) {
+      const fileArray = Array.from(e.target.files);
+
+      setImageFiles((prev) => [...prev, ...fileArray]);
+
+      const previewArray = fileArray.map((file) => URL.createObjectURL(file));
+      setPreviewImages((prev) => [...prev, ...previewArray]);
     }
   };
 
   const removeImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index));
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviewImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      const dto = {
-        title,
-        content,
-        attachmentPath: images[0] || "",
-        postType:
-          category === "꿀팁"
-            ? "TIP"
-            : category === "자유"
-            ? "FREE"
-            : category === "정보"
-            ? "INFO"
-            : "ALL",
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      };
-      await createPost(dto);
+      const formData = new FormData();
+
+      formData.append("title", title);
+      formData.append("content", content);
+
+      const postType =
+        category === "꿀팁"
+          ? "TIP"
+          : category === "자유"
+          ? "FREE"
+          : category === "정보"
+          ? "INFO"
+          : "ALL";
+
+      formData.append("postType", postType);
+
+      const tagList = tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      formData.append("tags", JSON.stringify(tagList));
+
+      imageFiles.forEach((file) => formData.append("files", file));
+
+      await createPost(formData);
 
       router.push("/onelife");
     } catch (err) {
@@ -150,10 +155,10 @@ export default function WritePostPage() {
                   <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
                     <input
                       type="file"
-                      id="image-upload"
-                      className="hidden"
                       accept="image/*"
                       multiple
+                      className="hidden"
+                      id="image-upload"
                       onChange={handleImageUpload}
                     />
                     <label htmlFor="image-upload" className="cursor-pointer">
@@ -168,12 +173,12 @@ export default function WritePostPage() {
                   </div>
 
                   {/* Image Preview Grid */}
-                  {images.length > 0 && (
+                  {previewImages.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
-                      {images.map((image, index) => (
+                      {previewImages.map((src, index) => (
                         <div key={index} className="relative group">
                           <img
-                            src={image || "/placeholder.svg"}
+                            src={src}
                             alt={`Upload ${index + 1}`}
                             className="w-full h-32 object-cover rounded-lg"
                           />
