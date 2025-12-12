@@ -1,71 +1,69 @@
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
-import { ChatMessage, MessageType } from "@/types/chat";
+import { ChatMessage, ChatMessageSendRequest, MessageType } from "@/types/chat";
+import Cookies from "js-cookie";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:8080";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:8080/ws";
 
 export class ChatWebSocketClient {
   private client: Client | null = null;
   private chatRoomId: number | null = null;
+  private onMessageReceived: ((message: ChatMessage) => void) | null = null;
+  private isConnectedState: boolean = false;
   private userId: number;
-  private nickname: string;
+  private userNickname: string;
 
-  constructor(userId: number, nickname: string) {
+  /**
+   * 생성자 - 사용자 정보를 받아서 저장
+   * (userId, userNickname은 유지하지만 WebSocket 인증에는 사용하지 않음)
+   */
+  constructor(userId: number, userNickname: string) {
     this.userId = userId;
-    this.nickname = nickname;
+    this.userNickname = userNickname;
+    console.log("WebSocket 클라이언트 생성:", { userId, userNickname });
   }
 
   connect(
-    chatRoomId: number,
-    onMessage: (message: ChatMessage) => void,
-    onConnect?: () => void
+      chatRoomId: number,
+      onMessage: (message: ChatMessage) => void,
+      onConnect?: () => void
   ) {
     this.chatRoomId = chatRoomId;
+    this.onMessageReceived = onMessage;
+    this.isConnectedState = false;
 
-    console.log("🔌 WebSocket 연결 시작:", {
-      chatRoomId,
-      userId: this.userId,
-      nickname: this.nickname,
-    });
+    console.log("WebSocket 연결 시도 (SockJS):", WS_URL);
+
+    const token = Cookies.get("accessToken");
+
+    if (!token) {
+      console.error("❌ 인증 토큰이 없습니다. 로그인이 필요합니다.");
+      throw new Error("인증 토큰이 없습니다. 로그인이 필요합니다.");
+    }
 
     this.client = new Client({
-      // ✅ withCredentials: true로 쿠키 자동 전송!
-      webSocketFactory: () =>
-        new SockJS(`${WS_URL}/ws`, null, {
-          withCredentials: true, // ★ 핵심!
-        } as any),
+      // SockJS 사용 (백엔드가 .withSockJS() 사용)
+      webSocketFactory: () => new SockJS(WS_URL),
 
-      // ✅ connectHeaders 제거 - 쿠키가 자동 전달됨
+      // JWT 토큰을 Authorization 헤더에 포함 (userId, nickname 대신)
+      connectHeaders: {
+        Authorization: `Bearer ${token}`,
+      },
 
       debug: (str) => {
-        console.log("STOMP:", str);
+        console.log("[WebSocket Debug]", str);
       },
 
       reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
 
       onConnect: () => {
-        console.log("✅ WebSocket 연결 성공");
+        console.log("✅ WebSocket 연결 성공!");
+        this.isConnectedState = true;
 
-        if (!this.client || !this.chatRoomId) {
-          console.error("❌ client 또는 chatRoomId가 없습니다");
-          return;
-        }
-
-        // 채팅방 구독
-        this.client.subscribe(
-          `/topic/chatroom/${this.chatRoomId}`,
-          (message) => {
-            try {
-              const chatMessage: ChatMessage = JSON.parse(message.body);
-              console.log("메시지 수신:", chatMessage);
-              onMessage(chatMessage);
-            } catch (error) {
-              console.error("메시지 파싱 오류:", error);
-            }
-          }
-        );
-
-        console.log(`채팅방 ${this.chatRoomId} 구독 완료`);
+        // 구독
+        this.subscribeToChatRoom(chatRoomId);
 
         if (onConnect) {
           onConnect();
@@ -73,49 +71,86 @@ export class ChatWebSocketClient {
       },
 
       onStompError: (frame) => {
-        console.error("❌ STOMP 오류:", frame);
-        console.error("상세 메시지:", frame.body);
+        console.error("❌ STOMP 에러:", frame.headers["message"]);
+        console.error("상세:", frame.body);
+        this.isConnectedState = false;
       },
 
-      onWebSocketError: (event) => {
-        console.error("❌ WebSocket 오류:", event);
+      onWebSocketClose: () => {
+        console.log("WebSocket 연결 종료");
+        this.isConnectedState = false;
       },
 
-      onDisconnect: () => {
-        console.log("WebSocket 연결 해제");
+      onWebSocketError: (error) => {
+        console.error("❌ WebSocket 에러:", error);
+        this.isConnectedState = false;
       },
     });
 
     this.client.activate();
   }
 
-  sendMessage(message: {
-    chatRoomId: number;
-    type: MessageType;
-    content: string;
-  }) {
-    if (!this.client?.connected) {
-      console.error("WebSocket이 연결되지 않았습니다");
+  private subscribeToChatRoom(chatRoomId: number) {
+    if (!this.client) return;
+
+    this.client.subscribe(`/topic/chatroom/${chatRoomId}`, (message) => {
+      try {
+        const chatMessage: ChatMessage = JSON.parse(message.body);
+        console.log("메시지 수신:", chatMessage);
+
+        if (this.onMessageReceived) {
+          this.onMessageReceived(chatMessage);
+        }
+      } catch (error) {
+        console.error("메시지 파싱 에러:", error);
+      }
+    });
+
+    console.log(`채팅방 구독 완료: /topic/chatroom/${chatRoomId}`);
+  }
+
+  sendMessage(message: ChatMessageSendRequest) {
+    if (!this.client || !this.client.active || !this.isConnectedState) {
+      console.error("❌ WebSocket이 연결되지 않았습니다.");
+      console.error(
+          "client:",
+          !!this.client,
+          "active:",
+          this.client?.active,
+          "state:",
+          this.isConnectedState
+      );
       return;
     }
 
-    console.log("메시지 전송:", message);
+    try {
+      this.client.publish({
+        destination: "/app/chat/message",
+        body: JSON.stringify(message),
+      });
 
-    this.client.publish({
-      destination: "/app/chat.send",
-      body: JSON.stringify(message),
-    });
+      console.log(
+          "메시지 전송 성공:",
+          message.type,
+          message.content.substring(0, 20)
+      );
+    } catch (error) {
+      console.error("❌ 메시지 전송 실패:", error);
+    }
   }
 
   disconnect() {
     if (this.client) {
       console.log("WebSocket 연결 해제 시작");
+
       this.client.deactivate();
-      this.client = null;
+      this.isConnectedState = false;
+
+      console.log("✅ WebSocket 연결 해제 완료");
     }
   }
 
   isConnected(): boolean {
-    return this.client?.connected ?? false;
+    return this.isConnectedState && this.client !== null && this.client.active;
   }
 }
