@@ -30,11 +30,13 @@ import {
   Send,
   MoreVertical,
   UserX,
-  Crown, // ✅ 추가 (권한 이양 아이콘)
+  Crown,
+  Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
+import { getCategoryIcon, getCategoryColor } from "@/lib/utils/categoryIcons";
 
 export default function GroupChatPage({
   params,
@@ -48,49 +50,251 @@ export default function GroupChatPage({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [message, setMessage] = useState("");
-  const [participants, setParticipants] = useState<ChatParticipant[]>([]);
-  const isInitialized = useRef(false);
-
-  const [showTransferModal, setShowTransferModal] = useState(false);
-
-  const chatRoomId = Number(id);
 
   const {
     currentChatRoom,
     setCurrentChatRoom,
     messages,
     addMessage,
+    setMessages,
     clearMessages,
   } = useChatStore();
 
+  const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [selectedTransferTarget, setSelectedTransferTarget] = useState<
+    number | null
+  >(null);
+
+  const isCreator =
+    loginMember && currentChatRoom
+      ? loginMember.id === currentChatRoom.creatorId
+      : false;
+
+  const CategoryIcon = currentChatRoom
+    ? getCategoryIcon(currentChatRoom.category)
+    : null;
+  const categoryColor = currentChatRoom
+    ? getCategoryColor(currentChatRoom.category)
+    : "";
+
   useEffect(() => {
-    if (!isLogin || !loginMember) {
-      alert("로그인이 필요한 기능입니다.");
+    if (!isLogin) {
+      alert("로그인이 필요합니다.");
       router.push("/login");
       return;
     }
-  }, [isLogin, loginMember, router]);
 
-  useEffect(() => {
-    if (!isLogin || !loginMember || isInitialized.current) {
+    loadChatRoomData();
+    loadParticipants();
+
+    return () => {
+      if (wsClient.current) {
+        wsClient.current.disconnect();
+      }
+    };
+  }, [id, isLogin]);
+
+  const loadChatRoomData = async () => {
+    try {
+      const room = await fetchChatRoom(Number(id));
+      setCurrentChatRoom(room);
+
+      const previousMessages = await fetchChatMessages(Number(id));
+      setMessages(previousMessages);
+
+      connectWebSocket();
+    } catch (error) {
+      console.error("채팅방 데이터 로드 실패:", error);
+      alert("채팅방을 불러오는데 실패했습니다.");
+      router.push("/groups");
+    }
+  };
+
+  const loadParticipants = async () => {
+    try {
+      const participantsList = await fetchChatParticipants(Number(id));
+      setParticipants(participantsList);
+    } catch (error) {
+      console.error("참여자 목록 로드 실패:", error);
+    }
+  };
+
+  const connectWebSocket = () => {
+    if (!loginMember) {
+      console.error("로그인 정보가 없습니다.");
       return;
     }
 
-    console.log("채팅방 초기화 시작:", chatRoomId);
-    isInitialized.current = true;
+    wsClient.current = new ChatWebSocketClient(
+      loginMember.id,
+      loginMember.nickname
+    );
 
-    loadChatRoomData();
+    wsClient.current.connect(
+      Number(id),
+      (message) => {
+        addMessage(message);
 
-    return () => {
-      console.log("채팅방 클린업");
+        const msgType = String(message.type);
+        if (
+          msgType === MessageType.ENTER ||
+          msgType === MessageType.LEAVE ||
+          msgType === MessageType.KICK ||
+          msgType === MessageType.TRANSFER
+        ) {
+          updateChatRoomInfo();
+          loadParticipants();
+        }
+      },
+      () => {
+        setIsConnected(true);
+      }
+    );
+  };
+
+  const updateChatRoomInfo = async () => {
+    try {
+      const updatedRoom = await fetchChatRoom(Number(id));
+      setCurrentChatRoom(updatedRoom);
+    } catch (error) {
+      console.error("채팅방 정보 업데이트 실패:", error);
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (!message.trim() || !wsClient.current || !isConnected) {
+      return;
+    }
+
+    wsClient.current.sendMessage({
+      chatRoomId: Number(id),
+      type: MessageType.TALK,
+      content: message.trim(),
+    });
+
+    setMessage("");
+  };
+
+  const handleLeaveChatRoom = async () => {
+    if (!confirm("채팅방을 나가시겠습니까?")) return;
+
+    if (!loginMember) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
+
+    if (!currentChatRoom) {
+      alert("채팅방 정보를 불러올 수 없습니다.");
+      return;
+    }
+
+    try {
+      console.log("🚪 채팅방 나가기 시작:", {
+        chatRoomId: currentChatRoom.id,
+        memberId: loginMember.id,
+      });
+
+      await leaveChatRoom(Number(id));
+
+      if (wsClient.current?.isConnected()) {
+        wsClient.current.sendMessage({
+          chatRoomId: currentChatRoom.id,
+          content: `${loginMember.nickname}님이 퇴장했습니다.`,
+          type: MessageType.LEAVE,
+        });
+      }
+
       if (wsClient.current) {
         wsClient.current.disconnect();
-        wsClient.current = null;
       }
+
       clearMessages();
-      isInitialized.current = false;
-    };
-  }, [chatRoomId, isLogin, loginMember]);
+      setCurrentChatRoom(null);
+
+      alert("채팅방을 나갔습니다.");
+      router.push("/groups");
+      router.refresh();
+    } catch (error: any) {
+      console.error("채팅방 나가기 실패:", error);
+
+      if (error.message?.includes("존재하지 않는") || error.status === 404) {
+        clearMessages();
+        setCurrentChatRoom(null);
+        router.push("/groups");
+        router.refresh();
+        return;
+      }
+
+      if (error.message?.includes("권한을 이양")) {
+        alert("방장은 다른 참여자에게 권한을 이양한 후 나갈 수 있습니다.");
+      } else {
+        alert(
+          "채팅방 나가기에 실패했습니다: " +
+            (error.message || "알 수 없는 오류")
+        );
+      }
+    }
+  };
+
+  const handleKickParticipant = async (
+    targetMemberId: number,
+    targetNickname: string
+  ) => {
+    if (
+      !confirm(
+        `${targetNickname}님을 강퇴하시겠습니까?\n강퇴된 사용자는 다시 입장할 수 없습니다.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await kickParticipant(Number(id), targetMemberId);
+      alert(`${targetNickname}님을 강퇴했습니다.`);
+      await loadParticipants();
+    } catch (error: any) {
+      console.error("강퇴 실패:", error);
+      alert(error.message || "강퇴에 실패했습니다.");
+    }
+  };
+
+  const handleTransferClick = () => {
+    setTransferModalOpen(true);
+  };
+
+  const handleTransferConfirm = async () => {
+    if (!selectedTransferTarget) {
+      alert("권한을 이양할 참여자를 선택해주세요.");
+      return;
+    }
+
+    const targetParticipant = participants.find(
+      (p) => p.memberId === selectedTransferTarget
+    );
+
+    if (!targetParticipant) return;
+
+    if (
+      !confirm(
+        `${targetParticipant.nickname}님에게 방장 권한을 이양하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await transferCreator(Number(id), selectedTransferTarget);
+      alert(`${targetParticipant.nickname}님에게 권한을 이양했습니다.`);
+      setTransferModalOpen(false);
+      setSelectedTransferTarget(null);
+      await updateChatRoomInfo();
+      await loadParticipants();
+    } catch (error: any) {
+      console.error("권한 이양 실패:", error);
+      alert(error.message || "권한 이양에 실패했습니다.");
+    }
+  };
 
   useEffect(() => {
     if (messagesContainerRef.current) {
@@ -99,204 +303,25 @@ export default function GroupChatPage({
     }
   }, [messages]);
 
-  const loadChatRoomData = async () => {
-    try {
-      const room = await fetchChatRoom(chatRoomId);
-      setCurrentChatRoom(room);
-
-      const messageHistory = await fetchChatMessages(chatRoomId, 50);
-      clearMessages();
-      messageHistory.forEach((msg) => addMessage(msg));
-
-      const participantsData = await fetchChatParticipants(chatRoomId);
-      setParticipants(participantsData);
-
-      if (!wsClient.current && loginMember) {
-        wsClient.current = new ChatWebSocketClient(
-          loginMember.id,
-          loginMember.nickname
-        );
-
-        wsClient.current.connect(
-          chatRoomId,
-          (newMessage) => {
-            console.log("새 메시지 수신:", newMessage);
-            addMessage(newMessage);
-
-            // KICK 또는 TRANSFER 메시지 수신 시 참여자 목록 갱신
-            const msgType = String(newMessage.type);
-            if (
-              msgType === "KICK" ||
-              msgType === "ENTER" ||
-              msgType === "LEAVE" ||
-              msgType === "TRANSFER"
-            ) {
-              setTimeout(async () => {
-                const updatedParticipants = await fetchChatParticipants(
-                  chatRoomId
-                );
-                setParticipants(updatedParticipants);
-              }, 100);
-            }
-          },
-          () => {
-            console.log("WebSocket 연결 완료 콜백");
-            setIsConnected(true);
-          }
-        );
-      }
-    } catch (error: any) {
-      console.error("채팅방 데이터 로드 실패:", error);
-
-      if (error.message?.includes("존재하지 않는") || error.status === 404) {
-        alert("채팅방을 찾을 수 없습니다.");
-        router.push("/groups");
-      } else {
-        alert("채팅방 정보를 불러올 수 없습니다.");
-      }
-    }
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!message.trim()) return;
-
-    if (!wsClient.current || !wsClient.current.isConnected()) {
-      alert("채팅 서버에 연결 중입니다.");
-      return;
-    }
-
-    wsClient.current.sendMessage({
-      chatRoomId: chatRoomId,
-      type: MessageType.TALK,
-      content: message.trim(),
-    });
-
-    setMessage("");
-  };
-
-  // 참여자 강퇴
-  const handleKickParticipant = async (
-    targetMemberId: number,
-    nickname: string
-  ) => {
-    if (!loginMember || !currentChatRoom) return;
-
-    if (loginMember.id !== currentChatRoom.creatorId) {
-      alert("방장만 참여자를 강퇴할 수 있습니다.");
-      return;
-    }
-
-    if (!confirm(`${nickname}님을 강퇴하시겠습니까?`)) return;
-
-    try {
-      console.log("🚫 강퇴 시작:", nickname, targetMemberId);
-      await kickParticipant(chatRoomId, targetMemberId);
-      console.log("✅ 강퇴 API 성공");
-    } catch (error: any) {
-      console.error("❌ 강퇴 실패:", error);
-      alert(error.message || "강퇴에 실패했습니다.");
-    }
-  };
-
-  // 권한 이양 핸들러 추가
-  const handleTransferClick = () => {
-    setShowTransferModal(true);
-  };
-
-  const handleTransfer = async (targetMemberId: number) => {
-    try {
-      await transferCreator(chatRoomId, targetMemberId);
-      alert("방장 권한을 이양했습니다.");
-      setShowTransferModal(false);
-
-      // 참여자 목록 새로고침
-      const updatedParticipants = await fetchChatParticipants(chatRoomId);
-      setParticipants(updatedParticipants);
-
-      // 채팅방 정보 새로고침 (creatorId 업데이트)
-      const updatedRoom = await fetchChatRoom(chatRoomId);
-      setCurrentChatRoom(updatedRoom);
-    } catch (error: any) {
-      console.error("권한 이양 실패:", error);
-      alert(error.message || "권한 이양에 실패했습니다.");
-    }
-  };
-
-  // 나가기 메시지 변경
-  const handleLeave = async () => {
-    if (!currentChatRoom) return;
-
-    const isCreator = loginMember?.id === currentChatRoom.creatorId;
-    const hasOtherParticipants = currentChatRoom.currentParticipants > 1;
-
-    let confirmMessage = "소모임을 나가시겠습니까?";
-
-    if (isCreator && hasOtherParticipants) {
-      // 권한 이양 안내
-      confirmMessage =
-        "방장은 다른 참여자에게 권한을 이양한 후 나갈 수 있습니다.\n'방장 권한 이양' 버튼을 눌러주세요.";
-      alert(confirmMessage);
-      return; // 나가기 차단
-    } else if (isCreator && !hasOtherParticipants) {
-      confirmMessage =
-        "마지막 참여자이므로 채팅방이 삭제됩니다.\n소모임을 나가시겠습니까?";
-    }
-
-    if (!confirm(confirmMessage)) return;
-
-    try {
-      if (wsClient.current) {
-        wsClient.current.disconnect();
-      }
-
-      await leaveChatRoom(chatRoomId);
-      clearMessages();
-      setCurrentChatRoom(null);
-      router.push("/groups");
-      router.refresh();
-    } catch (error: any) {
-      console.error("❌ 나가기 실패:", error);
-
-      if (error.message?.includes("존재하지 않는") || error.status === 404) {
-        clearMessages();
-        setCurrentChatRoom(null);
-        router.push("/groups");
-        router.refresh();
-      } else {
-        alert("소모임 나가기에 실패했습니다.");
-      }
-    }
-  };
-
-  if (!currentChatRoom || !loginMember) {
+  if (!currentChatRoom) {
     return (
-      <div className="min-h-screen bg-background">
+      <>
         <Header />
-        <main className="container mx-auto py-8">
-          <div className="flex justify-center items-center h-[60vh]">
-            <p className="text-muted-foreground">
-              채팅방 정보를 불러오는 중...
-            </p>
-          </div>
-        </main>
-        <Footer />
-      </div>
+        <div className="flex justify-center items-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </>
     );
   }
 
-  const isCreator = loginMember.id === currentChatRoom.creatorId;
-
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <>
       <Header />
-
-      <main className="flex-1 py-4 md:py-8">
-        <div className="container mx-auto px-4">
+      <main className="min-h-screen bg-background flex-1 py-4 md:py-8">
+        <div className="container mx-auto px-4 py-6">
           <Link
             href="/groups"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
           >
             <ArrowLeft className="h-4 w-4" />
             소모임 목록으로 돌아가기
@@ -316,7 +341,6 @@ export default function GroupChatPage({
                         {currentChatRoom.description || "연결됨"}
                       </p>
                     </div>
-                    {/* 방장 권한 이양 버튼 추가 */}
                     {isCreator && (
                       <Button
                         variant="outline"
@@ -382,9 +406,7 @@ export default function GroupChatPage({
                             ? msg.senderId === loginMember.id
                             : false;
 
-                          // 문자열로 비교
                           const msgType = String(msg.type);
-                          // TRANSFER 추가
                           const isSystemMessage =
                             msgType === "ENTER" ||
                             msgType === "LEAVE" ||
@@ -403,18 +425,9 @@ export default function GroupChatPage({
                                 key={uniqueKey}
                                 className="flex justify-center"
                               >
-                                <Badge
-                                  variant={
-                                    msgType === "KICK"
-                                      ? "destructive"
-                                      : msgType === "TRANSFER"
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                  className="text-xs"
-                                >
+                                <div className="bg-muted px-4 py-2 rounded-full text-xs text-muted-foreground">
                                   {msg.content}
-                                </Badge>
+                                </div>
                               </div>
                             );
                           }
@@ -422,45 +435,46 @@ export default function GroupChatPage({
                           return (
                             <div
                               key={uniqueKey}
-                              className={`flex gap-3 ${
-                                isMyMessage ? "flex-row-reverse" : ""
+                              className={`flex gap-2 ${
+                                isMyMessage ? "justify-end" : ""
                               }`}
                             >
                               {!isMyMessage && (
-                                <Avatar className="h-8 w-8">
+                                <Avatar className="h-8 w-8 mt-1">
                                   <AvatarFallback className="text-xs">
-                                    {msg.senderNickname[0]}
+                                    {msg.senderNickname?.[0] || "?"}
                                   </AvatarFallback>
                                 </Avatar>
                               )}
+
                               <div
-                                className={`flex flex-col ${
-                                  isMyMessage ? "items-end" : "items-start"
-                                } max-w-[70%]`}
+                                className={`max-w-[70%] ${
+                                  isMyMessage ? "items-end" : ""
+                                }`}
                               >
                                 {!isMyMessage && (
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium">
-                                      {msg.senderNickname}
-                                    </span>
-                                  </div>
+                                  <p className="text-xs text-muted-foreground mb-1">
+                                    {msg.senderNickname || "알 수 없음"}
+                                  </p>
                                 )}
+
                                 <div
-                                  className={`rounded-lg px-4 py-2 ${
+                                  className={`rounded-lg px-3 py-2 ${
                                     isMyMessage
                                       ? "bg-primary text-primary-foreground"
                                       : "bg-muted"
                                   }`}
                                 >
-                                  <p className="text-sm leading-relaxed wrap-break-word">
+                                  <p className="text-sm wrap-break-word">
                                     {msg.content}
                                   </p>
                                 </div>
-                                <span className="text-xs text-muted-foreground mt-1">
+
+                                <p className="text-xs text-muted-foreground mt-1">
                                   {format(new Date(msg.createdAt), "HH:mm", {
                                     locale: ko,
                                   })}
-                                </span>
+                                </p>
                               </div>
                             </div>
                           );
@@ -470,18 +484,26 @@ export default function GroupChatPage({
                 </CardContent>
 
                 <div className="border-t p-4 shrink-0">
-                  <form onSubmit={handleSendMessage} className="flex gap-2">
+                  <div className="flex gap-2">
                     <Input
-                      type="text"
-                      placeholder="메시지를 입력하세요..."
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      className="flex-1"
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }}
+                      placeholder="메시지를 입력하세요..."
+                      disabled={!isConnected}
                     />
-                    <Button type="submit" size="icon">
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!isConnected || !message.trim()}
+                    >
                       <Send className="h-4 w-4" />
                     </Button>
-                  </form>
+                  </div>
                 </div>
               </Card>
             </div>
@@ -493,14 +515,34 @@ export default function GroupChatPage({
                   <h3 className="font-semibold">소모임 정보</h3>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">참여 인원</span>
-                    <span className="ml-auto font-medium text-primary">
-                      {currentChatRoom.currentParticipants}/
-                      {currentChatRoom.maxParticipants}명
-                    </span>
+                  <div className="flex items-start gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-muted-foreground">참여 인원</p>
+                      <span className="font-medium text-green-600">
+                        {currentChatRoom.currentParticipants}/
+                        {currentChatRoom.maxParticipants}명
+                      </span>
+                    </div>
                   </div>
+
+                  {/* 카테고리 추가 */}
+                  {currentChatRoom.category && CategoryIcon && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <Tag className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-muted-foreground">카테고리</p>
+                        <div className="flex items-center gap-1">
+                          <CategoryIcon
+                            className={`h-4 w-4 ${categoryColor}`}
+                          />
+                          <p className="font-medium">
+                            {currentChatRoom.category}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-start gap-2 text-sm">
                     <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -571,7 +613,6 @@ export default function GroupChatPage({
                               )}
                             </div>
                           </div>
-                          {/* 강퇴 버튼 */}
                           {isCreator && !isMe && (
                             <Button
                               variant="ghost"
@@ -598,7 +639,7 @@ export default function GroupChatPage({
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={handleLeave}
+                onClick={handleLeaveChatRoom}
               >
                 소모임 나가기
               </Button>
@@ -607,58 +648,74 @@ export default function GroupChatPage({
         </div>
       </main>
 
-      <Footer />
-
-      {/* 권한 이양 모달 추가 */}
-      {showTransferModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowTransferModal(false)}
-        >
-          <Card
-            className="w-96 max-w-[90vw]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <CardHeader>
-              <h3 className="text-xl font-bold">방장 권한 이양</h3>
-              <p className="text-sm text-muted-foreground">
-                새로운 방장을 선택하세요
+      {/* Transfer Modal */}
+      {transferModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-lg w-full max-w-md border shadow-lg">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-bold">방장 권한 이양</h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                권한을 이양할 참여자를 선택하세요
               </p>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="max-h-64 overflow-y-auto space-y-2">
-                {participants
-                  .filter((p) => !p.isCreator) // 자기 자신 제외
-                  .map((participant) => (
-                    <button
-                      key={participant.memberId}
-                      onClick={() => handleTransfer(participant.memberId)}
-                      className="w-full text-left p-3 hover:bg-accent rounded-lg border transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs">
-                            {participant.nickname[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">
-                          {participant.nickname}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-              </div>
+            </div>
+
+            <div className="p-6 max-h-[400px] overflow-y-auto space-y-2">
+              {participants
+                .filter((p) => !p.isCreator)
+                .map((participant) => (
+                  <div
+                    key={participant.memberId}
+                    onClick={() =>
+                      setSelectedTransferTarget(participant.memberId)
+                    }
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition ${
+                      selectedTransferTarget === participant.memberId
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    }`}
+                  >
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>{participant.nickname[0]}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{participant.nickname}</p>
+                      <p className="text-xs opacity-80">
+                        {format(
+                          new Date(participant.joinedAt),
+                          "yyyy.MM.dd HH:mm",
+                          { locale: ko }
+                        )}{" "}
+                        입장
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="p-6 border-t flex gap-3">
               <Button
                 variant="outline"
-                className="w-full mt-4"
-                onClick={() => setShowTransferModal(false)}
+                onClick={() => {
+                  setTransferModalOpen(false);
+                  setSelectedTransferTarget(null);
+                }}
+                className="flex-1"
               >
                 취소
               </Button>
-            </CardContent>
-          </Card>
+              <Button
+                onClick={handleTransferConfirm}
+                disabled={!selectedTransferTarget}
+                className="flex-1"
+              >
+                권한 이양
+              </Button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+
+      <Footer />
+    </>
   );
 }

@@ -1,172 +1,209 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.2 0.015 85);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.2 0.015 85);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.2 0.015 85);
-    --primary: #aed180;
-    --primary-foreground: #123b17;
-    --primary-2: #85c04f;
-    --primary-2-foreground: #0f2f08;
-    --secondary: oklch(0.96 0.01 85);
-    --secondary-foreground: oklch(0.2 0.015 85);
-    --muted: oklch(0.97 0.008 85);
-    --muted-foreground: oklch(0.5 0.01 85);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.99 0.005 85);
-    --border: oklch(0.92 0.008 85);
-    --input: oklch(0.92 0.008 85);
-    --ring: oklch(0.62 0.19 40);
-    --radius: 0.75rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0.015 85);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.015 85);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.015 85);
+  --primary: #aed180;
+  --primary-foreground: #123b17;
+  --primary-2: #85c04f;
+  --primary-2-foreground: #0f2f08;
+  --secondary: oklch(0.96 0.01 85);
+  --secondary-foreground: oklch(0.2 0.015 85);
+  --muted: oklch(0.97 0.008 85);
+  --muted-foreground: oklch(0.5 0.01 85);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.99 0.005 85);
+  --border: oklch(0.92 0.008 85);
+  --input: oklch(0.92 0.008 85);
+  --ring: oklch(0.62 0.19 40);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: #9ec06f;
-    --primary-foreground: #07220a;
-    --primary-2: #7fb24a;
-    --primary-2-foreground: #071a06;
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: #9ec06f;
+  --primary-foreground: #07220a;
+  --primary-2: #7fb24a;
+  --primary-2-foreground: #071a06;
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
 }
 
 @theme inline {
-    --font-sans: 'Geist', 'Geist Fallback';
-    --font-mono: 'Geist Mono', 'Geist Mono Fallback';
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-primary: var(--primary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary-2: var(--primary-2);
-    --color-primary-2-foreground: var(--primary-2-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-destructive: var(--destructive);
-    --color-destructive-foreground: var(--destructive-foreground);
-    --color-border: var(--border);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
-    --color-sidebar: var(--sidebar);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: "Geist", "Geist Fallback";
+  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-2: var(--primary-2);
+  --color-primary-2-foreground: var(--primary-2-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {
-    * {
-        @apply border-border outline-ring/50;
-    }
-    body {
-        /* Reserve space for the fixed header (h-20 == 5rem) so content isn't hidden behind it */
-        @apply bg-background text-foreground pt-20;
-    }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    /* Reserve space for the fixed header (h-20 == 5rem) so content isn't hidden behind it */
+    @apply bg-background text-foreground pt-20;
+  }
 }
 
 .hide-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 .hide-scrollbar::-webkit-scrollbar {
-    display: none;
+  display: none;
 }
 
 /* Utilities for primary-2 so it can be used without a tailwind.config.js */
 @layer utilities {
-    .bg-primary2 {
-        background-color: var(--color-primary-2);
-    }
-    .text-primary2 {
-        color: var(--color-primary-2);
-    }
-    .text-primary2-foreground {
-        color: var(--color-primary-2-foreground);
-    }
-    .border-primary2 {
-        border-color: var(--color-primary-2);
-    }
+  .bg-primary2 {
+    background-color: var(--color-primary-2);
+  }
+  .text-primary2 {
+    color: var(--color-primary-2);
+  }
+  .text-primary2-foreground {
+    color: var(--color-primary-2-foreground);
+  }
+  .border-primary2 {
+    border-color: var(--color-primary-2);
+  }
 
-    /* 10% / 20% tints (mirrors the generated pattern used for `primary`) */
+  /* 10% / 20% tints (mirrors the generated pattern used for `primary`) */
+  .bg-primary2\/10 {
+    background-color: var(--color-primary-2);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
     .bg-primary2\/10 {
-        background-color: var(--color-primary-2);
+      background-color: color-mix(
+        in oklab,
+        var(--color-primary-2) 10%,
+        transparent
+      );
     }
-    @supports (color: color-mix(in lab, red, red)) {
-        .bg-primary2\/10 {
-            background-color: color-mix(
-                in oklab,
-                var(--color-primary-2) 10%,
-                transparent
-            );
-        }
-    }
+  }
+  .bg-primary2\/20 {
+    background-color: var(--color-primary-2);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
     .bg-primary2\/20 {
-        background-color: var(--color-primary-2);
+      background-color: color-mix(
+        in oklab,
+        var(--color-primary-2) 20%,
+        transparent
+      );
     }
-    @supports (color: color-mix(in lab, red, red)) {
-        .bg-primary2\/20 {
-            background-color: color-mix(
-                in oklab,
-                var(--color-primary-2) 20%,
-                transparent
-            );
-        }
-    }
+  }
 
-    /* selection helpers */
-    .selection\:bg-primary2 *::selection,
-    .selection\:bg-primary2::selection {
-        background-color: var(--color-primary-2);
-    }
+  /* selection helpers */
+  .selection\:bg-primary2 *::selection,
+  .selection\:bg-primary2::selection {
+    background-color: var(--color-primary-2);
+  }
 
-    .selection\:text-primary2-foreground *::selection,
-    .selection\:text-primary2-foreground::selection {
-        color: var(--color-primary-2-foreground);
-    }
+  .selection\:text-primary2-foreground *::selection,
+  .selection\:text-primary2-foreground::selection {
+    color: var(--color-primary-2-foreground);
+  }
+
+  /* 가로 스크롤은 가능하지만 스크롤바는 숨김 */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+
+  /* 모달이 열렸을 때 body 고정 */
+  body.modal-open {
+    overflow: hidden !important;
+    position: fixed !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Radix UI Select Content 스크롤 방지 */
+  [data-radix-select-content] {
+    position: fixed !important;
+    z-index: 9999 !important;
+  }
+
+  /* Radix UI Select Viewport */
+  [data-radix-select-viewport] {
+    max-height: 300px !important;
+    overflow-y: auto !important;
+  }
+
+  /* 모달 배경 */
+  .modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    overflow: hidden !important;
+  }
 }

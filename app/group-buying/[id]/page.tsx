@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -19,8 +19,11 @@ import {
   Trash2,
   Edit,
   LogOut,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useAuth } from "@/app/global/auth/useAuth";
@@ -50,6 +53,9 @@ export default function GroupBuyingDetailPage() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [contributedAmount, setContributedAmount] = useState("");
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const isLoadingRef = useRef(false);
 
   const isCreator = post && loginMember && post.creatorId === loginMember.id;
   const isParticipant =
@@ -61,26 +67,37 @@ export default function GroupBuyingDetailPage() {
   }, [postId]);
 
   const loadPostData = async () => {
+    if (isLoadingRef.current) {
+      return;
+    }
+
+    isLoadingRef.current = true;
+
     try {
       const postData = await fetchGroupBuyingPost(Number(postId));
       setPost(postData);
 
-      const participantsData = await fetchGroupBuyingParticipants(
-        Number(postId)
-      );
-      setParticipants(participantsData);
+      if (isLogin) {
+        const participantsData = await fetchGroupBuyingParticipants(
+          Number(postId)
+        );
+        setParticipants(participantsData);
+      } else {
+        setParticipants([]);
+      }
     } catch (error) {
       console.error("데이터 로드 실패:", error);
       alert("게시글을 불러오는데 실패했습니다.");
       router.push("/group-buying");
     } finally {
       setIsLoading(false);
+      isLoadingRef.current = false;
     }
   };
 
-  const handleParticipate = async () => {
+  const handleJoin = async () => {
     if (!isLogin) {
-      alert("로그인이 필요한 기능입니다.");
+      alert("로그인이 필요합니다.");
       router.push("/login");
       return;
     }
@@ -93,21 +110,11 @@ export default function GroupBuyingDetailPage() {
       return;
     }
 
-    // 1인당 정확한 금액 체크
-    const perPersonAmount = post.targetAmount / post.targetParticipants;
-    if (amount !== perPersonAmount) {
-      alert(
-        `1인당 정확한 금액 ${perPersonAmount.toLocaleString()}원을 입력해주세요.\n` +
-          `입력한 금액: ${amount.toLocaleString()}원`
-      );
-      return;
-    }
-
     try {
       await joinGroupBuyingPost(post.id, { contributedAmount: amount });
-      alert("공동구매에 참여했습니다!");
-      setContributedAmount("");
+      alert("참여가 완료되었습니다!");
       loadPostData();
+      setContributedAmount("");
     } catch (error: any) {
       console.error("참여 실패:", error);
       alert(error.message || "참여에 실패했습니다.");
@@ -117,26 +124,26 @@ export default function GroupBuyingDetailPage() {
   const handleLeave = async () => {
     if (!post) return;
 
-    const confirmed = confirm("공동구매를 나가시겠습니까?");
-    if (!confirmed) return;
+    if (!confirm("정말 참여를 취소하시겠습니까?")) {
+      return;
+    }
 
     try {
       await leaveGroupBuyingPost(post.id);
-      alert("공동구매를 나갔습니다.");
-      router.push("/group-buying");
+      alert("참여가 취소되었습니다.");
+      loadPostData();
     } catch (error: any) {
-      console.error("나가기 실패:", error);
-      alert(error.message || "나가기에 실패했습니다.");
+      console.error("참여 취소 실패:", error);
+      alert(error.message || "참여 취소에 실패했습니다.");
     }
   };
 
   const handleDelete = async () => {
     if (!post) return;
 
-    const confirmed = confirm(
-      "정말 삭제하시겠습니까?\n채팅방에 다른 참여자가 존재하면 삭제할 수 없습니다."
-    );
-    if (!confirmed) return;
+    if (!confirm("정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+      return;
+    }
 
     try {
       await deleteGroupBuyingPost(post.id);
@@ -144,21 +151,35 @@ export default function GroupBuyingDetailPage() {
       router.push("/group-buying");
     } catch (error: any) {
       console.error("삭제 실패:", error);
-      alert(error.message || "삭제에 실패했습니다.");
+      alert(error.message || "게시글 삭제에 실패했습니다.");
     }
   };
 
   const getStatusBadge = (status: GroupBuyingStatus) => {
-    switch (status) {
-      case GroupBuyingStatus.RECRUITING:
-        return <Badge className="bg-green-500">모집중</Badge>;
-      case GroupBuyingStatus.COMPLETED:
-        return <Badge variant="secondary">완료</Badge>;
-      case GroupBuyingStatus.CANCELLED:
-        return <Badge variant="destructive">취소</Badge>;
-      default:
-        return null;
+    if (status === "RECRUITING") {
+      return (
+        <Badge className="bg-green-500 hover:bg-green-600 text-white">
+          모집중
+        </Badge>
+      );
+    } else if (status === "COMPLETED") {
+      return <Badge className="bg-gray-400 text-white">완료</Badge>;
     }
+    return <Badge variant="secondary">{status}</Badge>;
+  };
+
+  const handlePrevImage = () => {
+    if (!post?.images || post.images.length === 0) return;
+    setCurrentImageIndex((prev) =>
+      prev === 0 ? post.images!.length - 1 : prev - 1
+    );
+  };
+
+  const handleNextImage = () => {
+    if (!post?.images || post.images.length === 0) return;
+    setCurrentImageIndex((prev) =>
+      prev === post.images!.length - 1 ? 0 : prev + 1
+    );
   };
 
   if (isLoading) {
@@ -168,6 +189,7 @@ export default function GroupBuyingDetailPage() {
         <div className="flex-1 flex justify-center items-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -179,11 +201,11 @@ export default function GroupBuyingDetailPage() {
         <div className="flex-1 flex justify-center items-center">
           <p className="text-muted-foreground">게시글을 찾을 수 없습니다.</p>
         </div>
+        <Footer />
       </div>
     );
   }
 
-  // 모집 마감 여부 확인
   const isFull = post.currentParticipants >= post.targetParticipants;
 
   return (
@@ -239,6 +261,62 @@ export default function GroupBuyingDetailPage() {
                   </div>
                 </CardHeader>
 
+                {post.images && post.images.length > 0 && (
+                  <div className="relative">
+                    <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                      <Image
+                        src={post.images[currentImageIndex]}
+                        alt={`${post.title} - 이미지 ${currentImageIndex + 1}`}
+                        width={800}
+                        height={450}
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg";
+                        }}
+                      />
+                    </div>
+
+                    {post.images.length > 1 && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                          onClick={handlePrevImage}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                          onClick={handleNextImage}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                          {post.images.map((_: string, index: number) => (
+                            <button
+                              key={index}
+                              onClick={() => setCurrentImageIndex(index)}
+                              className={`w-2 h-2 rounded-full transition-all ${
+                                index === currentImageIndex
+                                  ? "bg-white w-6"
+                                  : "bg-white/50"
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+                          {currentImageIndex + 1} / {post.images.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <CardContent>
                   <div className="prose prose-sm max-w-none">
                     <p className="whitespace-pre-wrap">{post.content}</p>
@@ -254,7 +332,7 @@ export default function GroupBuyingDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {participants.map((participant, index) => (
+                    {participants.map((participant, index: number) => (
                       <div
                         key={participant.memberId}
                         className="flex items-center gap-3"
@@ -365,11 +443,9 @@ export default function GroupBuyingDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* 사이드바 참여 카드 */}
-              {!isParticipant && (
+              {isLogin && !isParticipant && !isCreator && (
                 <Card className="hidden lg:block">
                   <CardContent className="pt-6 space-y-3">
-                    {/* 모집 중 (자리 있음) */}
                     {!isFull && (
                       <>
                         <input
@@ -382,118 +458,78 @@ export default function GroupBuyingDetailPage() {
                           className="w-full px-3 py-2 border rounded-md"
                         />
                         <Button
-                          size="lg"
                           className="w-full"
-                          onClick={handleParticipate}
+                          onClick={handleJoin}
+                          disabled={!isLogin}
                         >
-                          <Users className="mr-2 h-5 w-5" />
-                          공동구매 참여하기
+                          참여하기
                         </Button>
                       </>
                     )}
 
-                    {/* 모집 마감 (자리 없음) */}
                     {isFull && (
-                      <Button size="lg" className="w-full" disabled>
-                        모집 마감
-                      </Button>
+                      <p className="text-center text-sm text-muted-foreground py-3">
+                        모집이 마감되었습니다
+                      </p>
                     )}
                   </CardContent>
                 </Card>
+              )}
+
+              {isParticipant && !isCreator && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleLeave}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      참여 취소
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isCreator && (
+                <Card>
+                  <CardContent className="pt-6 space-y-3">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() =>
+                        router.push(`/group-buying/${post.id}/edit`)
+                      }
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      수정하기
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      onClick={handleDelete}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      삭제하기
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 참여자이거나 작성자만 채팅방 입장 가능 */}
+              {(isParticipant || isCreator) && (
+                <Button
+                  className="w-full"
+                  onClick={() => router.push(`/group-buying/${post.id}/chat`)}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  채팅방 입장
+                </Button>
               )}
             </div>
           </div>
         </div>
       </main>
-
-      {/* Bottom Action Buttons - 상태 조건 제거, 인원만 체크 */}
-      <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4">
-        <div className="container mx-auto max-w-4xl flex justify-center gap-3">
-          {/* 비참여자 (lg 미만에서만 표시) */}
-          {!isParticipant && (
-            <div className="w-full max-w-md lg:hidden flex flex-col gap-2">
-              {/* 모집 중 (자리 있음) */}
-              {!isFull && (
-                <>
-                  <input
-                    type="number"
-                    placeholder={`1인당 금액: ${(
-                      post.targetAmount / post.targetParticipants
-                    ).toLocaleString()}원`}
-                    value={contributedAmount}
-                    onChange={(e) => setContributedAmount(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md"
-                  />
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={handleParticipate}
-                  >
-                    <Users className="mr-2 h-5 w-5" />
-                    공동구매 참여하기
-                  </Button>
-                </>
-              )}
-
-              {/* 모집 마감 (자리 없음) */}
-              {isFull && (
-                <Button size="lg" className="w-full" disabled>
-                  모집 마감
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* 참여자 - 버튼 너비 고정 */}
-          {isParticipant && (
-            <div className="flex gap-3 w-full max-w-md justify-center">
-              <Button
-                size="lg"
-                className="flex-1 max-w-[180px]"
-                onClick={() => router.push(`/group-buying/${post.id}/chat`)}
-              >
-                <MessageSquare className="mr-2 h-5 w-5" />
-                채팅방 입장
-              </Button>
-              {isCreator && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="flex-1 max-w-[140px]"
-                    onClick={() => router.push(`/group-buying/${post.id}/edit`)}
-                  >
-                    <Edit className="mr-2 h-5 w-5" />
-                    수정
-                  </Button>
-
-                  <Button
-                    variant="destructive"
-                    size="lg"
-                    className="flex-1 max-w-[140px]"
-                    onClick={handleDelete}
-                  >
-                    <Trash2 className="mr-2 h-5 w-5" />
-                    삭제
-                  </Button>
-                </>
-              )}
-
-              {!isCreator && (
-                <Button
-                  variant="destructive"
-                  size="lg"
-                  className="flex-1 max-w-[140px]"
-                  onClick={handleLeave}
-                >
-                  <LogOut className="mr-2 h-5 w-5" />
-                  나가기
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
       <Footer />
     </div>

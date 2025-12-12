@@ -19,6 +19,10 @@ export interface GroupBuyingPost {
   updatedAt: string;
   progressPercentage: number;
   isExpired: boolean;
+  viewCount?: number; // 조회수
+  chatRoomMessageCount?: number; // 채팅방 메시지 수
+  images?: string[]; // 이미지 URL 목록
+  creatorNickname?: string; // 작성자 닉네임
 }
 
 /**
@@ -64,6 +68,18 @@ export interface GroupBuyingCreateRequest {
   chatRoomName: string;
   chatRoomDescription?: string;
   chatRoomMaxParticipants: number;
+}
+
+/**
+ * 공동구매 수정 요청
+ */
+export interface GroupBuyingUpdateRequest {
+  title: string;
+  content: string;
+  category: string;
+  region: string;
+  deadline: string;
+  imageIds?: number[];
 }
 
 /**
