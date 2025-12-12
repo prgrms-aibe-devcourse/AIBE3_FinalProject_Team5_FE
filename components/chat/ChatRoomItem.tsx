@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Users, MapPin, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { getCategoryIcon, getCategoryColor } from "@/lib/utils/categoryIcons";
 
 interface ChatRoomItemProps {
   chatRoom: ChatRoom;
@@ -14,6 +15,8 @@ interface ChatRoomItemProps {
 
 export default function ChatRoomItem({ chatRoom, onClick }: ChatRoomItemProps) {
   const isFull = chatRoom.currentParticipants >= chatRoom.maxParticipants;
+  const CategoryIcon = getCategoryIcon(chatRoom.category);
+  const categoryColor = getCategoryColor(chatRoom.category);
 
   return (
     <Card
@@ -32,7 +35,7 @@ export default function ChatRoomItem({ chatRoom, onClick }: ChatRoomItemProps) {
             </div>
           </div>
 
-          {/* 뱃지 */}
+          {/* 배지 */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant="outline"
@@ -40,6 +43,15 @@ export default function ChatRoomItem({ chatRoom, onClick }: ChatRoomItemProps) {
             >
               소모임
             </Badge>
+
+            {/* 카테고리 배지 추가 */}
+            {chatRoom.category && (
+              <Badge variant="outline" className="gap-1">
+                <CategoryIcon className={`w-3 h-3 ${categoryColor}`} />
+                {chatRoom.category}
+              </Badge>
+            )}
+
             {isFull && (
               <Badge
                 variant="destructive"

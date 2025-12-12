@@ -20,7 +20,10 @@ import {
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/app/global/auth/useAuth";
-import { fetchGroupBuyingPost } from "@/lib/api/groupBuyingApi";
+import {
+  fetchGroupBuyingPostInfo,
+  deleteGroupBuyingPost,
+} from "@/lib/api/groupBuyingApi";
 import {
   fetchChatMessages,
   fetchChatParticipants,
@@ -51,13 +54,17 @@ export default function GroupBuyingChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!loginMember) {
+      return;
+    }
+
     if (!isLogin) {
       alert("로그인이 필요한 기능입니다.");
       router.push("/login");
       return;
     }
 
-    if (!postId || !loginMember) {
+    if (!postId) {
       return;
     }
 
@@ -73,18 +80,58 @@ export default function GroupBuyingChatPage() {
         wsClient.current = null;
       }
     };
-  }, [postId]);
+  }, [postId, loginMember, isLogin]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  const loadParticipants = async (postData?: GroupBuyingPost | null) => {
+    const targetPost = postData || post;
+
+    if (!targetPost?.chatRoomId) {
+      return;
+    }
+
+    try {
+      const chatParticipants = await fetchChatParticipants(
+        targetPost.chatRoomId
+      );
+
+      setParticipants(chatParticipants);
+    } catch (error) {
+      console.error("참여자 목록 조회 실패:", error);
+    }
+  };
+
+  const loadPostInfo = async () => {
+    try {
+      const updatedPost = await fetchGroupBuyingPostInfo(Number(postId));
+      setPost(updatedPost);
+      return updatedPost;
+    } catch (error) {
+      console.error("게시글 정보 갱신 실패:", error);
+      return null;
+    }
+  };
+
   const loadInitialData = async () => {
     if (!loginMember) return;
 
     try {
-      const postData = await fetchGroupBuyingPost(Number(postId));
+      const postData = await fetchGroupBuyingPostInfo(Number(postId));
       setPost(postData);
+
+      const participantsData = await fetchChatParticipants(postData.chatRoomId);
+      const isParticipant = participantsData.some(
+        (p) => p.memberId === loginMember.id
+      );
+
+      if (!isParticipant) {
+        alert("공동구매에 참여한 사람만 채팅방에 입장할 수 있습니다.");
+        router.push(`/group-buying/${postId}`);
+        return;
+      }
 
       const chatMessages = await fetchChatMessages(postData.chatRoomId, 100);
       const sortedMessages = chatMessages.sort((a, b) => {
@@ -139,6 +186,18 @@ export default function GroupBuyingChatPage() {
               return timeA - timeB;
             });
           });
+
+          if (
+            newMessage.type === MessageType.ENTER ||
+            newMessage.type === MessageType.LEAVE ||
+            newMessage.type === MessageType.KICK ||
+            newMessage.type === MessageType.TRANSFER
+          ) {
+            setTimeout(async () => {
+              const updatedPost = await loadPostInfo();
+              await loadParticipants(updatedPost);
+            }, 100);
+          }
         },
         () => {
           setIsConnected(true);
@@ -169,24 +228,60 @@ export default function GroupBuyingChatPage() {
   };
 
   const handleLeave = async () => {
-    if (!post) return;
+    if (!post || !loginMember) return;
 
-    const confirmed = confirm("채팅방을 나가시겠습니까?");
-    if (!confirmed) return;
+    const isCreator = post.creatorId === loginMember.id;
 
-    try {
-      await leaveChatRoom(post.chatRoomId);
+    if (isCreator) {
+      const otherParticipants = participants.filter(
+        (p) => p.memberId !== loginMember.id
+      );
 
-      if (wsClient.current) {
-        wsClient.current.disconnect();
-        wsClient.current = null;
+      if (otherParticipants.length > 0) {
+        alert(
+          "공동구매 작성자는 모든 참여자가 나간 후에만 게시글을 삭제할 수 있습니다.\n" +
+            `다른 참여자: ${otherParticipants.length}명`
+        );
+        return;
       }
 
-      alert("채팅방을 나갔습니다.");
-      router.push(`/group-buying`);
-    } catch (error: any) {
-      console.error("나가기 실패:", error);
-      alert(error.message || "나가기에 실패했습니다.");
+      const confirmed = confirm(
+        "게시글을 삭제하시겠습니까?\n게시글 삭제 시 채팅방도 함께 삭제됩니다."
+      );
+      if (!confirmed) return;
+
+      try {
+        await deleteGroupBuyingPost(Number(postId));
+
+        if (wsClient.current) {
+          wsClient.current.disconnect();
+          wsClient.current = null;
+        }
+
+        alert("게시글과 채팅방이 삭제되었습니다.");
+        router.push(`/group-buying`);
+      } catch (error: any) {
+        console.error("게시글 삭제 실패:", error);
+        alert(error.message || "게시글 삭제에 실패했습니다.");
+      }
+    } else {
+      const confirmed = confirm("채팅방을 나가시겠습니까?");
+      if (!confirmed) return;
+
+      try {
+        await leaveChatRoom(post.chatRoomId);
+
+        if (wsClient.current) {
+          wsClient.current.disconnect();
+          wsClient.current = null;
+        }
+
+        alert("채팅방을 나갔습니다.");
+        router.push(`/group-buying`);
+      } catch (error: any) {
+        console.error("나가기 실패:", error);
+        alert(error.message || "나가기에 실패했습니다.");
+      }
     }
   };
 
