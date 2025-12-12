@@ -108,6 +108,11 @@ export default function SignupPage() {
   };
 
   const checkNicknameAvailable = async () => {
+    if (nickname.length < 2 || nickname.length > 8) {
+      alert("닉네임은 2~8자여야 합니다.");
+      return;
+    }
+
     const res = await fetch(
       `${baseUrl}/api/v1/auth/check-nickname?nickname=${nickname}`
     );

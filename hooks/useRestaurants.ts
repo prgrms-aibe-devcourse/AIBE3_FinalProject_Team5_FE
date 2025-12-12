@@ -51,7 +51,6 @@ export function useRestaurants(
         async (kw = keyword, p = page) => {
             const json = await fetchRestaurants({ keyword: kw, page: p, size });
             const rawList = Array.isArray(json) ? json : [];
-            // load session-stored kakao-imported ids and exclude them from general listing
             let kakaoImportedIds: number[] = [];
             try {
                 const stored = JSON.parse(
@@ -63,27 +62,16 @@ export function useRestaurants(
             } catch (e) {
                 kakaoImportedIds = [];
             }
-            // Filter out server-side imported kakao places from the general list
-            // unless they belong to the current user. Nearby searches still
-            // surface imported items.
             const list = (rawList as Restaurant[]).filter((r: any) => {
-                // Exclude server-side imported kakao places from the general
-                // listing. We only want user-created local entries (isLocal)
-                // to be prioritized in the general list; server-created
-                // imported places (even if owned) should not be forced into
-                // the general listing — they remain visible via nearby search.
                 const looksLikeKakao = Boolean(
                     (r as any)?.placeUrl || (r as any)?.placeId
                 );
-                // also exclude any kakao-imported ids created during this session
                 if (looksLikeKakao) return false;
                 if (
                     (r as any)?.id &&
                     kakaoImportedIds.includes(Number((r as any).id))
                 )
                     return false;
-
-                // otherwise include
                 return true;
             });
 
@@ -92,10 +80,6 @@ export function useRestaurants(
             if (isLogin && localAdded && localAdded.length) {
                 const existingIds = new Set(merged.map((r) => (r as any).id));
                 for (const la of localAdded) {
-                    // Only include client-local restaurants (isLocal === true)
-                    // that the user explicitly added via the UI. This prevents
-                    // server-created imported places from being promoted to
-                    // the top of the list simply because the user reviewed them.
                     if (!((la as any).isLocal === true)) continue;
                     const ownerId =
                         (la as any).ownerId ?? (la as any).memberId ?? null;
@@ -200,14 +184,10 @@ export function useRestaurants(
                 });
                 const merged = [...(list as Restaurant[])];
                 if (isLogin && localAdded && localAdded.length) {
-                    // Include only the user's local-added restaurants that are
-                    // actually near the requested target position. This avoids
-                    // promoting reviewed/imported restaurants that are far away
-                    // into the nearby results unexpectedly.
                     const existingIds = new Set(
                         merged.map((r) => (r as any).id)
                     );
-                    const maxDistanceMeters = 2000; // 2km default radius
+                    const maxDistanceMeters = 2000;
                     const mine = (localAdded || [])
                         .filter((la) => {
                             const ownerId =
@@ -283,7 +263,7 @@ export function useRestaurants(
                     ];
 
                     if (isLogin && localAdded && localAdded.length) {
-                        const maxDistanceMeters = 2000; // 2km
+                        const maxDistanceMeters = 2000;
                         const mine = (localAdded || [])
                             .filter((la) => {
                                 const ownerId =
@@ -533,9 +513,6 @@ export function useRestaurants(
                                     '[useRestaurants] kakaoSearchNearby set results',
                                     { count: mergedResults.length }
                                 );
-                                // Ensure results are sorted by distance so the
-                                // nearest restaurants are shown first regardless
-                                // of insertion order during merging.
                                 mergedResults.sort(
                                     (a: any, b: any) =>
                                         (a.distanceMeters ?? 0) -
@@ -741,6 +718,7 @@ export function useRestaurants(
                 );
                 return;
             }
+            console.debug('[useRestaurants] addLocalRestaurant called', r);
             const ref = userPos ?? mapCenter;
             const lat = (r as any).latitude ?? (r as any).lat;
             const lng = (r as any).longitude ?? (r as any).lng;
@@ -753,8 +731,13 @@ export function useRestaurants(
                 ownerId: (r as any).ownerId ?? loginMember?.id ?? null,
             } as Restaurant & { distanceMeters?: number };
             const isServerCreated = Number((r as any).id) > 0;
+            console.debug(
+                '[useRestaurants] addLocalRestaurant isServerCreated=',
+                isServerCreated
+            );
 
             const reconcile = (created: Restaurant) => {
+                console.debug('[useRestaurants] reconcile created', created);
                 const createdLat =
                     (created as any).latitude ?? (created as any).lat;
                 const createdLng =
@@ -1162,12 +1145,20 @@ export function useRestaurants(
     useEffect(() => {
         if (!isLogin) {
             setLocalAdded([]);
-            loadRestaurants().catch(console.error);
+            setIsNearby(true);
+            loadNearbyRestaurants(1, mapCenter).catch(console.error);
         }
     }, [isLogin]);
 
     useEffect(() => {
-        loadRestaurants().catch(console.error);
+        setIsNearby(true);
+        loadNearbyRestaurants().catch((e) => {
+            console.error(
+                'initial nearby load failed, falling back to full list',
+                e
+            );
+            loadRestaurants().catch(console.error);
+        });
     }, []);
 
     return {

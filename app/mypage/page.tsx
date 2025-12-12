@@ -51,6 +51,33 @@ interface User {
   };
 }
 
+interface Post {
+  id: number;
+  title: string;
+  postType: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Comment {
+  id: number;
+  postTitle: string;
+  content: string;
+  createdAt: string;
+}
+
+interface Chat {
+  chatRoomId: number;
+  name: string;
+  currentParticipants: number;
+  status: string;
+  maxParticipants: number;
+  createdAt: string;
+}
+
 export default function MyPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
@@ -65,106 +92,35 @@ export default function MyPage() {
   const [user, setUser] = useState<User | null>(null);
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [loading, setLoading] = useState(false);
+  const [activeChats, setActiveChats] = useState<Chat[] | null>([]);
+  const [completedChats, setCompletedChats] = useState<Chat[] | null>([]);
+  const [groupChats, setGroupChats] = useState<Chat[] | null>([]);
+  const [groupChatPage, setGroupChatPage] = useState(1);
+  const [groupBuyChats, setGroupBuyChats] = useState<Chat[] | null>([]);
+  const [groupBuyChatPage, setGroupBuyChatPage] = useState(1);
+  const [myPosts, setMyPosts] = useState<Post[] | null>([]);
+  const [postPage, setPostPage] = useState(1);
+  const [myComments, setMyComments] = useState<Comment[] | null>([]);
+  const [commentPage, setCommentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const pageSize = 5;
+  const postCategories = ["전체", "자유", "꿀팁", "정보"];
 
-  const smallGroupChats = [
-    {
-      id: 1,
-      title: "홍대 저녁 식사 모임",
-      status: "진행중",
-      participants: 3,
-      date: "12월 12일",
-    },
-    {
-      id: 2,
-      title: "강남 카페 스터디",
-      status: "진행중",
-      participants: 4,
-      date: "12월 10일",
-    },
-  ];
+  // 로그인 여부 확인
+  useEffect(() => {
+    const check = async () => {
+      const login = await reloadMember();
+      if (login === false) {
+        alert("로그인 후 이용해 주세요.");
+        router.push("/login");
+      }
+    };
 
-  const groupBuyingChats = [
-    {
-      id: 3,
-      title: "코스트코 과일 공동구매",
-      status: "진행중",
-      participants: 7,
-      date: "12월 15일",
-    },
-    {
-      id: 4,
-      title: "세제 대용량 공동구매",
-      status: "완료",
-      participants: 8,
-      date: "12월 5일",
-    },
-  ];
-
-  const activeChats =
-    chatType === "small-group"
-      ? smallGroupChats
-      : groupBuyingChats.filter((c) => c.status === "진행중");
-  const completedChats =
-    chatType === "group-buying"
-      ? groupBuyingChats.filter((c) => c.status === "완료")
-      : [];
-
-  const myPosts = [
-    {
-      id: 1,
-      category: "꿀팁",
-      title: "원룸에서 효율적으로 수납하는 10가지 방법",
-      views: 1247,
-      likes: 89,
-      comments: 23,
-      date: "2일 전",
-    },
-    {
-      id: 2,
-      category: "혼밥",
-      title: "5분만에 완성하는 간단 혼밥 레시피",
-      views: 892,
-      likes: 67,
-      comments: 15,
-      date: "5일 전",
-    },
-    {
-      id: 3,
-      category: "정보",
-      title: "1인 가구 혜택 정리",
-      views: 654,
-      likes: 45,
-      comments: 12,
-      date: "1주 전",
-    },
-    {
-      id: 4,
-      category: "꿀팁",
-      title: "전기세 절약 방법",
-      views: 543,
-      likes: 38,
-      comments: 9,
-      date: "2주 전",
-    },
-  ];
+    check();
+  }, []);
 
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
-
-  const myComments = [
-    {
-      id: 1,
-      postTitle: "강남역 근처 맛집 추천",
-      content: "저도 어제 거기 갔는데 진짜 맛있더라구요!",
-      date: "1일 전",
-    },
-    {
-      id: 2,
-      postTitle: "코스트코 공동구매",
-      content: "참여하고 싶어요! 어떻게 하면 되나요?",
-      date: "3일 전",
-    },
-  ];
 
   const bookmarkedPosts = [
     {
@@ -194,6 +150,10 @@ export default function MyPage() {
     { id: 2, nickname: "카페러버", posts: 56 },
   ];
 
+  // 하단 게시글, 레시피, 댓글 등 변환시 페이지 초기화
+  // useEffect(() => {} ,[])
+
+  // 마이페이지 유저 정보 불러오기
   useEffect(() => {
     if (isLogin && loginMember?.id) {
       const getMemberDetail = async () => {
@@ -215,13 +175,198 @@ export default function MyPage() {
       };
 
       getMemberDetail();
+      getMemberPosts();
     }
   }, [isLogin, loginMember]);
 
-  // 저장된 레시피 목록 불러오기
+  const arrange = () => {
+    if (chatType === "small-group") {
+      setActiveChats(groupChats ?? []);
+      setCompletedChats([]);
+    } else {
+      setActiveChats(
+        (groupBuyChats ?? []).filter((c) => c.status === "진행중")
+      );
+      setCompletedChats(
+        (groupBuyChats ?? []).filter((c) => c.status === "완료")
+      );
+    }
+  };
+
+  // 사용자가 참여중인 소그룹 목록 불러오기
+  const getMemberGroupChats = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/groups?page=${
+          groupChatPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 소그룹 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      setTotalPages(result.totalPages);
+      setGroupChats(result.content);
+      console.log("결과", result.content);
+    } catch (err) {
+      console.error("내 소그룹 불러오기 실패:", err);
+    }
+  };
+
+  // 사용자가 참여중인 공동구매 목록 불러오기
+  const getMemberGroupBuyChats = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/group-buys?page=${
+          groupBuyChatPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 공동구매 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+      if (!result) return;
+
+      const chat = result.content.map((item: any) => ({
+        ...item,
+        status: convertByStatus(item.status),
+      }));
+
+      setTotalPages(result.totalPages);
+      setGroupBuyChats(chat);
+    } catch (err) {
+      console.error("내 공동구매 불러오기 실패:", err);
+    }
+  };
+
+  // 공동구매 상태 변환기
+  const convertByStatus = (status: string | null | undefined) => {
+    switch (status) {
+      case "RECRUITING":
+        return "진행중";
+      case "COMPLETED":
+        return "완료";
+      default:
+        return "완료";
+    }
+  };
+
+  useEffect(() => {
+    if (chatType == "small-group") {
+      getMemberGroupChats();
+    } else {
+      getMemberGroupBuyChats();
+    }
+  }, [chatType]);
+  useEffect(() => {
+    arrange();
+  }, [chatType, groupBuyChats, groupChats]);
+
+  // 사용자가 작성한 게시글 불러오기
+  const getMemberPosts = async () => {
+    const cat = convertCategoryToEnum(postCategory);
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/posts?page=${
+          postPage - 1
+        }&size=${pageSize}&postType=${cat}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 게시글 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      const posts = result.content.map((item: any) => ({
+        ...item,
+        postType: convertEnumToCategory(item.postType),
+      }));
+      setTotalPages(result.totalPages);
+      setMyPosts(posts.content ?? posts ?? []);
+    } catch (err) {
+      console.error("내 게시글 불러오기 실패:", err);
+    }
+  };
+
+  function convertCategoryToEnum(category: string | null | undefined) {
+    switch (category) {
+      case "자유":
+        return "FREE";
+      case "꿀팁":
+        return "TIP";
+      case "정보":
+        return "INFO";
+      case "인기":
+        return "HOT";
+      default:
+        return "ALL";
+    }
+  }
+
+  function convertEnumToCategory(category: string | null | undefined) {
+    switch (category) {
+      case "FREE":
+        return "자유";
+      case "TIP":
+        return "꿀팁";
+      case "INFO":
+        return "정보";
+      case "HOT":
+        return "인기";
+      default:
+        return "기타";
+    }
+  }
+
+  useEffect(() => {
+    getMemberPosts();
+  }, [postPage, postCategory]);
+
+  // 저장된 레시피, 소그룹, 공동구매 목록 불러오기
   useEffect(() => {
     if (isLogin && loading) {
-      loadSavedRecipes();
+      loadSavedRecipes(); // 레시피
+      getMemberGroupChats(); // 소그룹
+      getMemberPosts(); // 게시글
+      arrange();
     }
   }, [isLogin, loading]);
 
@@ -262,27 +407,55 @@ export default function MyPage() {
     setExpandedRecipes(newExpanded);
   };
 
-  const filteredPosts =
-    postCategory === "전체"
-      ? myPosts
-      : myPosts.filter((post) => post.category === postCategory);
+  // 내 댓글 불러오기
+  const getMemberComments = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/comments?page=${
+          commentPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-  const postCategories = [
-    "전체",
-    ...Array.from(new Set(myPosts.map((post) => post.category))),
-  ];
+      if (!res.ok) {
+        alert("내 댓글 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      setTotalPages(result.totalPages);
+      setMyComments(result.content ?? result ?? []);
+    } catch (err) {
+      console.error("내 댓글 불러오기 실패:", err);
+    }
+  };
 
   useEffect(() => {
-    const check = async () => {
-      const login = await reloadMember();
-      if (login === false) {
-        alert("로그인 후 이용해 주세요.");
-        router.push("/login");
-      }
-    };
+    if (activeTab !== "comments") return;
+    getMemberComments();
+  }, [commentPage, activeTab]);
 
-    check();
-  }, []);
+  // 날짜 포맷 문자열 변환
+  function formatDate(dateString: string) {
+    const date = new Date(dateString);
+
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+
+    return `${yyyy}-${mm}-${dd}`;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -437,59 +610,72 @@ export default function MyPage() {
                     <CardContent className="space-y-4">
                       <div>
                         <h4 className="text-sm font-semibold mb-3">
-                          진행중 ({activeChats.length})
+                          진행중 ({activeChats?.length})
                         </h4>
                         <div className="space-y-2">
-                          {activeChats.map((chat) => (
-                            <Link
-                              key={chat.id}
-                              href={`/local/${chatType}/${chat.id}/chat`}
-                            >
-                              <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <h5 className="font-medium">
-                                          {chat.title}
-                                        </h5>
-                                        <Badge className="bg-green-500">
-                                          {chat.status}
-                                        </Badge>
-                                      </div>
-                                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                                        <div className="flex items-center gap-1">
-                                          <Users className="h-3 w-3" />
-                                          <span>{chat.participants}명</span>
+                          {activeChats?.map((chat) => {
+                            const link =
+                              chatType === "small-group"
+                                ? `/groups/${chat.chatRoomId}/chat`
+                                : `/group-buying/${chat.chatRoomId}`;
+
+                            return (
+                              <Link key={chat.chatRoomId} href={link}>
+                                <Card className="hover:shadow-md transition-shadow">
+                                  <CardContent className="p-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <h5 className="font-medium">
+                                            {chat.name}
+                                          </h5>
+
+                                          {chatType === "group-buying" && (
+                                            <Badge className="bg-green-500">
+                                              {chat.status}
+                                            </Badge>
+                                          )}
                                         </div>
-                                        <span>{chat.date}</span>
+
+                                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                          <div className="flex items-center gap-1">
+                                            <Users className="h-3 w-3" />
+                                            <span>
+                                              {chat.currentParticipants}명 /{" "}
+                                              {chat.maxParticipants}명
+                                            </span>
+                                          </div>
+                                          <span>
+                                            {formatDate(chat.createdAt)}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </Link>
-                          ))}
+                                  </CardContent>
+                                </Card>
+                              </Link>
+                            );
+                          })}
                         </div>
                       </div>
 
                       {chatType === "group-buying" &&
-                        completedChats.length > 0 && (
+                        (completedChats ?? []).length > 0 && (
                           <>
                             <Separator />
                             <div>
                               <h4 className="text-sm font-semibold mb-3">
-                                완료 ({completedChats.length})
+                                완료 ({completedChats?.length})
                               </h4>
                               <div className="space-y-2">
-                                {completedChats.map((chat) => (
-                                  <Card key={chat.id}>
+                                {completedChats?.map((chat) => (
+                                  <Card key={chat.chatRoomId}>
                                     <CardContent className="p-4">
                                       <div className="flex items-center justify-between">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 mb-1">
                                             <h5 className="font-medium text-muted-foreground">
-                                              {chat.title}
+                                              {chat.name}
                                             </h5>
                                             <Badge variant="outline">
                                               {chat.status}
@@ -498,9 +684,14 @@ export default function MyPage() {
                                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                                             <div className="flex items-center gap-1">
                                               <Users className="h-3 w-3" />
-                                              <span>{chat.participants}명</span>
+                                              <span>
+                                                {chat.currentParticipants}명 /{" "}
+                                                {chat.maxParticipants}명
+                                              </span>
                                             </div>
-                                            <span>{chat.date}</span>
+                                            <span>
+                                              {formatDate(chat.createdAt)}
+                                            </span>
                                           </div>
                                         </div>
                                       </div>
@@ -577,6 +768,7 @@ export default function MyPage() {
                     <CardContent>
                       {activeTab === "posts" && (
                         <div className="space-y-4">
+                          {/* 카테고리 버튼 */}
                           <div className="flex flex-wrap gap-2 pb-2 border-b">
                             {postCategories.map((category) => (
                               <Button
@@ -587,15 +779,18 @@ export default function MyPage() {
                                     : "outline"
                                 }
                                 size="sm"
-                                onClick={() => setPostCategory(category)}
+                                onClick={() => {
+                                  setPostCategory(category);
+                                  setPostPage(1); // 카테고리 변경 시 1페이지로 이동
+                                }}
                               >
                                 {category}
                               </Button>
                             ))}
                           </div>
-
+                          {/* 게시글 리스트 */}
                           <div className="space-y-3">
-                            {filteredPosts.map((post) => (
+                            {myPosts?.map((post) => (
                               <Link
                                 key={post.id}
                                 href={`/onelife/post/${post.id}`}
@@ -606,27 +801,28 @@ export default function MyPage() {
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-2">
                                           <Badge variant="secondary">
-                                            {post.category}
+                                            {post.postType}
                                           </Badge>
                                           <span className="text-xs text-muted-foreground">
-                                            {post.date}
+                                            {formatDate(post.createdAt)}
                                           </span>
                                         </div>
                                         <h4 className="font-semibold mb-2">
                                           {post.title}
                                         </h4>
+
                                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                           <div className="flex items-center gap-1">
                                             <Eye className="h-3 w-3" />
-                                            <span>{post.views}</span>
+                                            <span>{post.viewCount}</span>
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <Heart className="h-3 w-3" />
-                                            <span>{post.likes}</span>
+                                            <span>{post.likeCount}</span>
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <MessageCircle className="h-3 w-3" />
-                                            <span>{post.comments}</span>
+                                            <span>{post.commentCount}</span>
                                           </div>
                                         </div>
                                       </div>
@@ -635,7 +831,41 @@ export default function MyPage() {
                                 </Card>
                               </Link>
                             ))}
+
+                            {/* 게시글이 없을 때 */}
+                            {myPosts?.length === 0 && (
+                              <p className="text-center text-sm text-muted-foreground py-4">
+                                게시글이 없습니다.
+                              </p>
+                            )}
                           </div>
+
+                          {/* 페이징 UI */}
+                          {totalPages > 1 && (
+                            <div className="flex justify-center items-center gap-4 mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={postPage === 1}
+                                onClick={() => setPostPage(postPage - 1)}
+                              >
+                                이전
+                              </Button>
+
+                              <span className="text-sm">
+                                {postPage} / {totalPages}
+                              </span>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={postPage === totalPages}
+                                onClick={() => setPostPage(postPage + 1)}
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -666,7 +896,9 @@ export default function MyPage() {
                                           variant="secondary"
                                           className="text-xs"
                                         >
-                                          {mapCategoryToDisplay(recipe.category)}
+                                          {mapCategoryToDisplay(
+                                            recipe.category
+                                          )}
                                         </Badge>
                                       </div>
                                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -700,7 +932,9 @@ export default function MyPage() {
                                       <div className="flex items-center gap-2">
                                         <Users className="h-4 w-4 text-muted-foreground" />
                                         <span className="text-sm">
-                                          {mapServingsToDisplay(recipe.servings)}
+                                          {mapServingsToDisplay(
+                                            recipe.servings
+                                          )}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -719,10 +953,7 @@ export default function MyPage() {
                                       </h3>
                                       <div className="grid grid-cols-2 gap-2">
                                         {recipe.ingredients.map(
-                                          (
-                                            ingredient: string,
-                                            idx: number
-                                          ) => (
+                                          (ingredient: string, idx: number) => (
                                             <div
                                               key={idx}
                                               className="flex items-center gap-2 text-sm"
@@ -742,7 +973,10 @@ export default function MyPage() {
                                       <div className="space-y-3">
                                         {recipe.steps.map(
                                           (step: string, idx: number) => (
-                                            <div key={idx} className="flex gap-3">
+                                            <div
+                                              key={idx}
+                                              className="flex gap-3"
+                                            >
                                               <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
                                                 {idx + 1}
                                               </div>
@@ -776,18 +1010,19 @@ export default function MyPage() {
 
                       {activeTab === "comments" && (
                         <div className="space-y-3">
-                          {myComments.map((comment) => (
-                            <Card key={comment.id}>
+                          {/* 댓글 리스트 */}
+                          {myComments?.map((comment) => (
+                            <Card>
                               <CardContent className="p-4">
                                 <div className="mb-2">
                                   <Link
-                                    href="#"
+                                    href={`/onelife/post/${comment.id}`}
                                     className="text-sm font-medium hover:text-primary"
                                   >
                                     {comment.postTitle}
                                   </Link>
                                   <span className="text-xs text-muted-foreground ml-2">
-                                    {comment.date}
+                                    {formatDate(comment.createdAt)}
                                   </span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
@@ -796,6 +1031,40 @@ export default function MyPage() {
                               </CardContent>
                             </Card>
                           ))}
+
+                          {/* 데이터 없을 때 */}
+                          {myComments?.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              작성한 댓글이 없습니다.
+                            </p>
+                          )}
+
+                          {/* 페이징 UI */}
+                          {totalPages > 1 && (
+                            <div className="flex justify-center items-center gap-4 mt-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={commentPage === 1}
+                                onClick={() => setCommentPage(commentPage - 1)}
+                              >
+                                이전
+                              </Button>
+
+                              <span className="text-sm">
+                                {commentPage} / {totalPages}
+                              </span>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={commentPage === totalPages}
+                                onClick={() => setCommentPage(commentPage + 1)}
+                              >
+                                다음
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
 
