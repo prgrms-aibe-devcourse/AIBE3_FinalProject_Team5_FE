@@ -33,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  Share2,
+  Bookmark,
 } from "lucide-react";
 import { useAuth } from "@/app/global/auth/useAuth";
 import {
@@ -40,6 +42,7 @@ import {
   saveRecipe,
   fetchGeneratedRecipes,
   fetchSavedRecipes,
+  createShareLink,
   type RecipeResponse,
   mapServingsToNumber,
   mapCategoryToDisplay,
@@ -49,6 +52,8 @@ import {
   RecipeCategory,
   CookingTime,
   Difficulty,
+  fetchYoutubeVideoByTitle,
+  type YoutubeVideoResponse,
 } from "@/lib/api/recipeApi";
 
 export default function RecipePage() {
@@ -73,7 +78,18 @@ export default function RecipePage() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [focusedRecipe, setFocusedRecipe] = useState<RecipeResponse | null>(null);
+  const focusedRecipeRef = useRef<HTMLDivElement | null>(null);
+  const [shareTargetRecipe, setShareTargetRecipe] =
+    useState<RecipeResponse | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [isCopying, setIsCopying] = useState(false);
+  const [isCopySuccess, setIsCopySuccess] = useState(false);
+  const shareInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
+  const [videoMap, setVideoMap] = useState<Record<string, YoutubeVideoResponse | null>>({});
+  const [videoLoading, setVideoLoading] = useState<Set<string>>(new Set());
+  const [videoError, setVideoError] = useState<Record<string, string>>({});
 
   // 생성된 레시피 목록 불러오기
   useEffect(() => {
@@ -140,6 +156,7 @@ export default function RecipePage() {
       setCookingTime("");
       setDifficulty("");
       setServings("");
+      setFocusedRecipe(null);
       if (sparkleTimerRef.current) {
         clearTimeout(sparkleTimerRef.current);
       }
@@ -176,6 +193,11 @@ export default function RecipePage() {
     }
 
     try {
+      const ensuredEmbedUrl =
+        videoMap[recipe.title]?.embedUrl ||
+        recipe.youtubeUrl ||
+        (await ensureYoutubeVideo(recipe));
+
       await saveRecipe({
         title: recipe.title,
         description: recipe.description,
@@ -185,6 +207,7 @@ export default function RecipePage() {
         servings: recipe.servings,
         ingredients: recipe.ingredients,
         steps: recipe.steps,
+        youtubeUrl: ensuredEmbedUrl || undefined,
       });
       setSavedRecipeIds((prev) => {
         const updated = new Set(prev);
@@ -212,9 +235,225 @@ export default function RecipePage() {
       newExpanded.delete(index);
     } else {
       newExpanded.add(index);
+      const recipe = recipes[index];
+      if (recipe) {
+        loadYoutubeVideo(recipe);
+      }
     }
     setExpandedCards(newExpanded);
   };
+
+  const ensureYoutubeVideo = async (recipe: RecipeResponse) => {
+    // 이미 가져온 경우 재호출 방지
+    const cached = videoMap[recipe.title];
+    if (cached?.embedUrl) return cached.embedUrl;
+
+    // 저장된 youtubeUrl이 있으면 그대로 사용
+    if (recipe.youtubeUrl) {
+      const video = {
+        videoId: "",
+        embedUrl: recipe.youtubeUrl,
+        title: recipe.title,
+        thumbnailUrl: "",
+      };
+      setVideoMap((prev) => ({ ...prev, [recipe.title]: video }));
+      setVideoError((prev) => ({ ...prev, [recipe.title]: "" }));
+      return video.embedUrl;
+    }
+
+    // 없으면 한 번만 검색
+    setVideoLoading((prev) => new Set(prev).add(recipe.title));
+    try {
+      const video = await fetchYoutubeVideoByTitle(recipe.title);
+      setVideoMap((prev) => ({ ...prev, [recipe.title]: video }));
+      setVideoError((prev) => ({ ...prev, [recipe.title]: "" }));
+      return video.embedUrl;
+    } catch (error) {
+      console.error("유튜브 영상 검색 실패:", error);
+      setVideoMap((prev) => ({ ...prev, [recipe.title]: null }));
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "관련 영상을 찾을 수 없어요.";
+      setVideoError((prev) => ({
+        ...prev,
+        [recipe.title]: message,
+      }));
+      return undefined;
+    } finally {
+      setVideoLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(recipe.title);
+        return next;
+      });
+    }
+  };
+
+  const loadYoutubeVideo = async (recipe: RecipeResponse) => {
+    if (videoMap[recipe.title] !== undefined) return;
+    await ensureYoutubeVideo(recipe);
+  };
+
+  const openShareModal = async (recipe: RecipeResponse) => {
+    if (!isLogin) {
+      setShowLoginModal(true);
+      return;
+    }
+
+    try {
+      const shareLinkData = await createShareLink(recipe.id);
+      setShareLink(shareLinkData.shareUrl);
+      setShareTargetRecipe(recipe);
+      setIsCopySuccess(false);
+    } catch (error) {
+      console.error("공유 링크 생성 실패:", error);
+      alert("공유 링크 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink) return;
+    setIsCopying(true);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+      } else if (shareInputRef.current) {
+        shareInputRef.current.select();
+        document.execCommand("copy");
+      }
+      setIsCopySuccess(true);
+      setTimeout(() => setIsCopySuccess(false), 2000);
+    } catch (error) {
+      console.error("공유 링크 복사 실패:", error);
+      alert("링크 복사에 실패했어요. 다시 시도해주세요.");
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  const handleFocusRecipe = (recipe: RecipeResponse) => {
+    setFocusedRecipe(recipe);
+    setExpandedCards(new Set());
+    loadYoutubeVideo(recipe);
+    setTimeout(() => {
+      focusedRecipeRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  };
+
+  const renderRecipeContent = (recipe: RecipeResponse) => (
+    <CardContent className="space-y-6 pt-0">
+      <p className="text-muted-foreground">{recipe.description}</p>
+
+      <div className="flex gap-6">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm">
+            {mapServingsToDisplay(recipe.servings)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <ChefHat className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm">
+            {mapDifficultyToDisplay(recipe.difficulty)}
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-semibold mb-3">필요한 재료</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {recipe.ingredients.map((ingredient: string, idx: number) => (
+            <div
+              key={idx}
+              className="flex items-center gap-2 text-sm"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+              <span>{ingredient}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-semibold mb-3">조리 순서</h3>
+        <div className="space-y-3">
+          {recipe.steps.map((step: string, idx: number) => (
+            <div key={idx} className="flex gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+                {idx + 1}
+              </div>
+              <p className="text-sm pt-0.5">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="pt-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">관련 유튜브 영상</h3>
+        </div>
+        {videoLoading.has(recipe.title) ? (
+          <p className="text-sm text-muted-foreground">영상을 불러오는 중입니다...</p>
+        ) : videoMap[recipe.title]?.embedUrl ? (
+          <div className="aspect-video rounded-lg overflow-hidden border">
+            <iframe
+              title={`${recipe.title} 관련 유튜브 영상`}
+              src={videoMap[recipe.title]!.embedUrl}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        ) : videoError[recipe.title] ? (
+          <p className="text-sm text-muted-foreground">{videoError[recipe.title]}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            아직 영상을 불러오지 않았어요. 버튼을 눌러 검색해보세요.
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-4">
+        <Button
+          variant="outline"
+          className="flex-1 bg-transparent"
+          onClick={() => openShareModal(recipe)}
+        >
+          <Share2 className="h-4 w-4 mr-2" />
+          공유하기
+        </Button>
+        <Button
+          className="flex-1"
+          onClick={() => handleSaveRecipe(recipe)}
+          disabled={
+            savedRecipeIds.has(recipe.id) ||
+            savedRecipeKeys.has(`${recipe.title}::${recipe.description}`)
+          }
+          variant={
+            savedRecipeIds.has(recipe.id) ||
+            savedRecipeKeys.has(`${recipe.title}::${recipe.description}`)
+              ? "secondary"
+              : "default"
+          }
+        >
+          <Bookmark className="h-4 w-4 mr-2" />
+          {savedRecipeIds.has(recipe.id) ||
+          savedRecipeKeys.has(`${recipe.title}::${recipe.description}`)
+            ? "이미 저장됨"
+            : "레시피 저장하기"}
+        </Button>
+      </div>
+      {(savedRecipeIds.has(recipe.id) ||
+        savedRecipeKeys.has(`${recipe.title}::${recipe.description}`)) && (
+        <p className="text-xs text-muted-foreground text-right">
+          이미 저장한 레시피예요
+        </p>
+      )}
+    </CardContent>
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -247,18 +486,7 @@ export default function RecipePage() {
                       <button
                         key={recipe.id}
                         className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors border border-transparent hover:border-border"
-                        onClick={() => {
-                          // 레시피 클릭 시 해당 레시피로 스크롤
-                          const recipeElement = document.getElementById(
-                            `recipe-${recipe.id}`
-                          );
-                          if (recipeElement) {
-                            recipeElement.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center",
-                            });
-                          }
-                        }}
+                        onClick={() => handleFocusRecipe(recipe)}
                       >
                         <div className="font-medium text-sm mb-1">
                           {recipe.title}
@@ -290,7 +518,7 @@ export default function RecipePage() {
                 </h1>
                 <p className="text-lg text-muted-foreground">
                   재료나 원하는 요리를 입력하면 AI가 맞춤 레시피를
-                  추천해줘요!
+                  추천드려요!
                 </p>
               </div>
 
@@ -299,7 +527,7 @@ export default function RecipePage() {
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">
-                        어떤 요리를 만들고 싶으신가요?
+                        어떤 재료로 무슨 요리를 만들고 싶으신가요?
                       </label>
                       <Textarea
                         placeholder="예: 냉장고에 김치와 밥이 있어요. 간단한 요리 추천해주세요."
@@ -449,148 +677,103 @@ export default function RecipePage() {
                 </CardContent>
               </Card>
 
-              {recipes.length > 0 && (
-                <div className="space-y-4">
-                  {recipes.map((recipe, index) => (
-                    <Card
-                      key={recipe.id || index}
-                      id={`recipe-${recipe.id || index}`}
-                      className={`overflow-hidden ${
-                        showSparkle ? "recipe-sparkle" : ""
-                      }`}
+              {focusedRecipe ? (
+                <div
+                  className="space-y-4"
+                  ref={focusedRecipeRef}
+                  id="focused-recipe"
+                >
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="ghost"
+                      onClick={() => setFocusedRecipe(null)}
                     >
-                      <CardHeader
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => toggleCard(index)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <CardTitle className="text-xl">
-                                {recipe.title}
-                              </CardTitle>
-                              <Badge variant="secondary" className="text-xs">
-                                {mapCategoryToDisplay(recipe.category)}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-4 w-4" />
-                                <span>
-                                  {mapCookingTimeToDisplay(recipe.cookingTime)}
-                                </span>
-                              </div>
-                            </div>
+                      이전으로
+                    </Button>
+                  </div>
+
+                  <Card
+                    id={`recipe-${focusedRecipe.id}`}
+                    className="overflow-hidden"
+                  >
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <CardTitle className="text-xl">
+                              {focusedRecipe.title}
+                            </CardTitle>
+                            <Badge variant="secondary" className="text-xs">
+                              {mapCategoryToDisplay(focusedRecipe.category)}
+                            </Badge>
                           </div>
-                          <div className="text-muted-foreground">
-                            {expandedCards.has(index) ? (
-                              <ChevronUp className="h-5 w-5" />
-                            ) : (
-                              <ChevronDown className="h-5 w-5" />
-                            )}
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              <span>
+                                {mapCookingTimeToDisplay(
+                                  focusedRecipe.cookingTime
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </CardHeader>
-
-                      {expandedCards.has(index) && (
-                        <CardContent className="space-y-6 pt-0">
-                          <p className="text-muted-foreground">
-                            {recipe.description}
-                          </p>
-
-                          <div className="flex gap-6">
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">
-                                {mapServingsToDisplay(recipe.servings)}
-                              </span>
+                      </div>
+                    </CardHeader>
+                    {renderRecipeContent(focusedRecipe)}
+                  </Card>
+                </div>
+              ) : (
+                recipes.length > 0 && (
+                  <div className="space-y-4">
+                    {recipes.map((recipe, index) => (
+                      <Card
+                        key={recipe.id || index}
+                        id={`recipe-${recipe.id || index}`}
+                        className={`overflow-hidden ${
+                          showSparkle ? "recipe-sparkle" : ""
+                        }`}
+                      >
+                        <CardHeader
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => toggleCard(index)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <CardTitle className="text-xl">
+                                  {recipe.title}
+                                </CardTitle>
+                                <Badge variant="secondary" className="text-xs">
+                                  {mapCategoryToDisplay(recipe.category)}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-4 w-4" />
+                                  <span>
+                                    {mapCookingTimeToDisplay(recipe.cookingTime)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <ChefHat className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">
-                                {mapDifficultyToDisplay(recipe.difficulty)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <h3 className="font-semibold mb-3">필요한 재료</h3>
-                            <div className="grid grid-cols-2 gap-2">
-                              {recipe.ingredients.map(
-                                (ingredient: string, idx: number) => (
-                                  <div
-                                    key={idx}
-                                    className="flex items-center gap-2 text-sm"
-                                  >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                    <span>{ingredient}</span>
-                                  </div>
-                                )
+                            <div className="text-muted-foreground">
+                              {expandedCards.has(index) ? (
+                                <ChevronUp className="h-5 w-5" />
+                              ) : (
+                                <ChevronDown className="h-5 w-5" />
                               )}
                             </div>
                           </div>
+                        </CardHeader>
 
-                          <div>
-                            <h3 className="font-semibold mb-3">조리 순서</h3>
-                            <div className="space-y-3">
-                              {recipe.steps.map((step: string, idx: number) => (
-                                <div key={idx} className="flex gap-3">
-                                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                                    {idx + 1}
-                                  </div>
-                                  <p className="text-sm pt-0.5">{step}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2 pt-4">
-                            <Button
-                              variant="outline"
-                              className="flex-1 bg-transparent"
-                            >
-                              공유하기
-                            </Button>
-                            <Button
-                              className="flex-1"
-                              onClick={() => handleSaveRecipe(recipe)}
-                              disabled={
-                                savedRecipeIds.has(recipe.id) ||
-                                savedRecipeKeys.has(
-                                  `${recipe.title}::${recipe.description}`
-                                )
-                              }
-                              variant={
-                                savedRecipeIds.has(recipe.id) ||
-                                savedRecipeKeys.has(
-                                  `${recipe.title}::${recipe.description}`
-                                )
-                                  ? "secondary"
-                                  : "default"
-                              }
-                            >
-                              {savedRecipeIds.has(recipe.id) ||
-                              savedRecipeKeys.has(
-                                `${recipe.title}::${recipe.description}`
-                              )
-                                ? "이미 저장됨"
-                                : "레시피 저장하기"}
-                            </Button>
-                          </div>
-                          {(savedRecipeIds.has(recipe.id) ||
-                            savedRecipeKeys.has(
-                              `${recipe.title}::${recipe.description}`
-                            )) && (
-                            <p className="text-xs text-muted-foreground text-right">
-                              이미 저장한 레시피예요
-                            </p>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  ))}
-                  <div ref={bottomRef} />
-                </div>
+                        {expandedCards.has(index) &&
+                          renderRecipeContent(recipe)}
+                      </Card>
+                    ))}
+                    <div ref={bottomRef} />
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -599,13 +782,54 @@ export default function RecipePage() {
 
       <Footer />
 
+      {/* 공유 링크 모달 */}
+      <Dialog
+        open={!!shareTargetRecipe}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShareTargetRecipe(null);
+            setShareLink("");
+            setIsCopySuccess(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-lg font-semibold">
+              레시피 공유 링크
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              링크를 복사해 친구에게 보내면 전체 레시피 내용을 바로 볼 수
+              있어요.
+            </p>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                ref={shareInputRef}
+                value={shareLink}
+                readOnly
+                onFocus={(e) => e.target.select()}
+                className="flex-1"
+              />
+              <Button onClick={copyShareLink} disabled={isCopying}>
+                {isCopying ? "복사 중..." : "링크 복사"}
+              </Button>
+            </div>
+            {isCopySuccess && (
+              <p className="text-xs text-green-600">복사되었어요!</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 로그인 모달 */}
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="space-y-4">
             <DialogTitle className="text-center text-lg leading-relaxed">
               <div>간편하게 가입하고</div>
-              <div>나만의 레시피를 저장해 보세요!</div>
+              <div>나만의 레시피를 공유하고 저장해봐요!</div>
             </DialogTitle>
           </DialogHeader>
           <Card>
