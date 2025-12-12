@@ -28,19 +28,54 @@ export default function CurrentLocationButton({
             window.alert('이 브라우저는 위치 정보를 지원하지 않습니다.');
             return;
         }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const { latitude, longitude } = pos.coords;
-                onLocated({ lat: latitude, lng: longitude });
-            },
-            (err) => {
-                console.error('geolocation error', err);
-                window.alert(
-                    '현재 위치를 가져오지 못했습니다. 브라우저 권한을 확인해주세요.'
-                );
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-        );
+        const proceedGet = () => {
+            const opts: PositionOptions = {
+                enableHighAccuracy: false,
+                timeout: 20000,
+                maximumAge: 60000,
+            };
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    onLocated({ lat: latitude, lng: longitude });
+                },
+                (err) => {
+                    console.error('geolocation error', err);
+                    const code = (err && (err as any).code) || 'unknown';
+                    const msg = (err && (err as any).message) || '';
+                    window.alert(
+                        `현재 위치를 가져오지 못했습니다. (${code}) ${msg}\n\n브라우저 권한, OS 위치 설정, 또는 HTTPS 환경(localhost 제외)을 확인해주세요.`
+                    );
+                },
+                opts
+            );
+        };
+
+        if (
+            'permissions' in navigator &&
+            (navigator as any).permissions.query
+        ) {
+            try {
+                (navigator as any).permissions
+                    .query({ name: 'geolocation' })
+                    .then((status: any) => {
+                        if (status.state === 'denied') {
+                            window.alert(
+                                '이 사이트에 대한 위치 액세스가 차단되어 있습니다. 브라우저 주소창의 사이트 권한 설정에서 위치 사용을 허용해 주세요.'
+                            );
+                            return;
+                        }
+                        proceedGet();
+                    })
+                    .catch(() => {
+                        proceedGet();
+                    });
+            } catch (e) {
+                proceedGet();
+            }
+        } else {
+            proceedGet();
+        }
     };
 
     return (

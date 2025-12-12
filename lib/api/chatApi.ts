@@ -201,3 +201,33 @@ export async function fetchChatParticipants(
 
   return [];
 }
+
+/**
+ * 참여자 강퇴 (방장만 가능)
+ */
+export async function kickParticipant(
+  chatRoomId: number,
+  targetMemberId: number
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms/${chatRoomId}/kick/${targetMemberId}`,
+    getFetchOptions("POST")
+  );
+
+  await handleResponse<void>(response);
+}
+
+/**
+ * 방장 권한 이양 (방장만 가능)
+ */
+export async function transferCreator(
+  chatRoomId: number,
+  targetMemberId: number
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/chatrooms/${chatRoomId}/transfer/${targetMemberId}`,
+    getFetchOptions("POST")
+  );
+
+  await handleResponse<void>(response);
+}

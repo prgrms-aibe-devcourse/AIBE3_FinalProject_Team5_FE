@@ -1,108 +1,253 @@
-"use client"
+"use client";
 
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { Send, Users, MapPin, Clock, DollarSign, ArrowLeft, MoreVertical } from "lucide-react"
-import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState, useRef } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Send,
+  Users,
+  MapPin,
+  Clock,
+  DollarSign,
+  ArrowLeft,
+  LogOut,
+} from "lucide-react";
+import { useAuth } from "@/app/global/auth/useAuth";
+import { fetchGroupBuyingPost } from "@/lib/api/groupBuyingApi";
+import {
+  fetchChatMessages,
+  fetchChatParticipants,
+  leaveChatRoom,
+  ChatParticipant,
+} from "@/lib/api/chatApi";
+import { ChatWebSocketClient } from "@/lib/websocket/chatWebSocket";
+import { GroupBuyingPost, GroupBuyingStatus } from "@/types/groupBuying";
+import { ChatMessage, MessageType } from "@/types/chat";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 
-export default function GroupBuyingChatPage({
-  params,
-}: {
-  params: { id: string }
-}) {
-  const [message, setMessage] = useState("")
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      author: "과일러버",
-      role: "주최자",
-      content: "안녕하세요! 공동구매 채팅방에 오신 것을 환영합니다 😊",
-      time: "오전 10:00",
-      isMe: false,
-    },
-    {
-      id: 2,
-      author: "건강식",
-      role: "참여자",
-      content: "참여하고 싶어요! 어떻게 하면 되나요?",
-      time: "오전 10:05",
-      isMe: false,
-    },
-    {
-      id: 3,
-      author: "과일러버",
-      role: "주최자",
-      content: "12월 15일 오후 2시에 강남역 2번 출구에서 만나서 함께 코스트코로 이동할 예정입니다!",
-      time: "오전 10:07",
-      isMe: false,
-    },
-    {
-      id: 4,
-      author: "과일좋아",
-      role: "참여자",
-      content: "딸기 좋아하는데 딱이네요! 참여할게요!",
-      time: "오전 10:15",
-      isMe: false,
-    },
-    {
-      id: 5,
-      author: "신선과일",
-      role: "참여자",
-      content: "지퍼백은 각자 준비해가는 거죠?",
-      time: "오전 10:20",
-      isMe: false,
-    },
-    {
-      id: 6,
-      author: "과일러버",
-      role: "주최자",
-      content: "네 맞아요! 지퍼백 준비해오시면 좋습니다. 저도 여분 몇 개 가져갈게요~",
-      time: "오전 10:22",
-      isMe: false,
-    },
-  ])
+export default function GroupBuyingChatPage() {
+  const router = useRouter();
+  const params = useParams();
+  const { isLogin, loginMember } = useAuth();
+  const postId = params.id as string;
 
-  const groupBuy = {
-    title: "코스트코 과일 공동구매",
-    currentPeople: 7,
-    targetPeople: 10,
-    price: "1인당 15,000원",
-    meetingPlace: "강남역 2번 출구",
-    meetingTime: "12월 15일 오후 2시",
-  }
+  const [post, setPost] = useState<GroupBuyingPost | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
 
-  const participants = [
-    { name: "과일러버", role: "주최자", status: "online" },
-    { name: "건강식", role: "참여자", status: "online" },
-    { name: "과일좋아", role: "참여자", status: "online" },
-    { name: "신선과일", role: "참여자", status: "offline" },
-    { name: "비타민", role: "참여자", status: "online" },
-    { name: "과일마니아", role: "참여자", status: "offline" },
-    { name: "딸기러버", role: "참여자", status: "online" },
-  ]
+  const wsClient = useRef<ChatWebSocketClient | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isLogin) {
+      alert("로그인이 필요한 기능입니다.");
+      router.push("/login");
+      return;
+    }
+
+    if (!postId || !loginMember) {
+      return;
+    }
+
+    if (wsClient.current && isConnected) {
+      return;
+    }
+
+    loadInitialData();
+
+    return () => {
+      if (wsClient.current) {
+        wsClient.current.disconnect();
+        wsClient.current = null;
+      }
+    };
+  }, [postId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const loadInitialData = async () => {
+    if (!loginMember) return;
+
+    try {
+      const postData = await fetchGroupBuyingPost(Number(postId));
+      setPost(postData);
+
+      const chatMessages = await fetchChatMessages(postData.chatRoomId, 100);
+      const sortedMessages = chatMessages.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeA - timeB;
+      });
+      setMessages(sortedMessages);
+
+      const chatParticipants = await fetchChatParticipants(postData.chatRoomId);
+      setParticipants(chatParticipants);
+
+      setIsLoading(false);
+
+      await connectWebSocket(postData.chatRoomId);
+    } catch (error) {
+      console.error("데이터 로드 실패:", error);
+      alert("채팅방을 불러오는데 실패했습니다.");
+      router.push(`/group-buying/${postId}`);
+    }
+  };
+
+  const connectWebSocket = async (chatRoomId: number) => {
+    if (!loginMember) return;
+
+    try {
+      wsClient.current = new ChatWebSocketClient(
+        loginMember.id,
+        loginMember.nickname
+      );
+
+      await wsClient.current.connect(
+        chatRoomId,
+        (newMessage: ChatMessage) => {
+          setMessages((prev) => {
+            const isDuplicate = prev.some(
+              (msg) =>
+                msg.id === newMessage.id ||
+                (msg.content === newMessage.content &&
+                  msg.senderId === newMessage.senderId &&
+                  msg.createdAt === newMessage.createdAt)
+            );
+
+            if (isDuplicate) {
+              return prev;
+            }
+
+            const updated = [...prev, newMessage];
+            return updated.sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeA - timeB;
+            });
+          });
+        },
+        () => {
+          setIsConnected(true);
+          console.log("WebSocket 연결 완료");
+        }
+      );
+    } catch (error) {
+      console.error("WebSocket 연결 실패:", error);
+    }
+  };
 
   const handleSendMessage = () => {
-    if (message.trim()) {
-      setMessages([
-        ...messages,
-        {
-          id: messages.length + 1,
-          author: "나",
-          role: "참여자",
-          content: message,
-          time: "방금",
-          isMe: true,
-        },
-      ])
-      setMessage("")
+    if (!message.trim() || !wsClient.current || !isConnected || !post) return;
+
+    wsClient.current.sendMessage({
+      chatRoomId: post.chatRoomId,
+      content: message,
+      type: MessageType.TALK,
+    });
+    setMessage("");
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
+  };
+
+  const handleLeave = async () => {
+    if (!post) return;
+
+    const confirmed = confirm("채팅방을 나가시겠습니까?");
+    if (!confirmed) return;
+
+    try {
+      await leaveChatRoom(post.chatRoomId);
+
+      if (wsClient.current) {
+        wsClient.current.disconnect();
+        wsClient.current = null;
+      }
+
+      alert("채팅방을 나갔습니다.");
+      router.push(`/group-buying`);
+    } catch (error: any) {
+      console.error("나가기 실패:", error);
+      alert(error.message || "나가기에 실패했습니다.");
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  const getStatusBadge = (status: GroupBuyingStatus) => {
+    switch (status) {
+      case GroupBuyingStatus.RECRUITING:
+        return <Badge className="bg-green-500">모집중</Badge>;
+      case GroupBuyingStatus.COMPLETED:
+        return <Badge variant="secondary">완료</Badge>;
+      case GroupBuyingStatus.CANCELLED:
+        return <Badge variant="destructive">취소</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  const getParticipantNickname = (participant: ChatParticipant): string => {
+    const p = participant as any;
+
+    if (p.memberNickname) {
+      return String(p.memberNickname);
+    }
+    if (p.nickname) {
+      return String(p.nickname);
+    }
+    return "알 수 없음";
+  };
+
+  if (!isLogin) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <div className="flex-1 flex justify-center items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!post) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <div className="flex-1 flex justify-center items-center">
+          <p className="text-muted-foreground">채팅방을 찾을 수 없습니다.</p>
+        </div>
+        <Footer />
+      </div>
+    );
   }
 
   return (
@@ -110,57 +255,89 @@ export default function GroupBuyingChatPage({
       <Header />
 
       <main className="flex-1 py-4 md:py-8">
-        <div className="container mx-auto px-4 h-full">
-          <div className="max-w-6xl mx-auto h-full">
-            {/* Back Button */}
-            <Link
-              href={`/local/group-buying/${params.id}`}
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              공동구매 상세로 돌아가기
-            </Link>
+        <div className="container mx-auto px-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push(`/group-buying/${postId}`)}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold">{post.title}</h1>
+                <p className="text-sm text-muted-foreground">
+                  {participants.length}명 참여중
+                </p>
+              </div>
+            </div>
 
-            <div className="grid lg:grid-cols-4 gap-4 h-[calc(100vh-200px)]">
-              {/* Chat Area */}
-              <div className="lg:col-span-3 flex flex-col">
-                <Card className="flex-1 flex flex-col">
-                  {/* Chat Header */}
-                  <CardHeader className="border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-xl font-bold">{groupBuy.title}</h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {participants.filter((p) => p.status === "online").length}명 접속 중
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  </CardHeader>
+            {loginMember && (
+              <Button variant="outline" size="sm" onClick={handleLeave}>
+                <LogOut className="h-4 w-4 mr-2" />
+                나가기
+              </Button>
+            )}
+          </div>
 
-                  {/* Messages */}
-                  <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {/* System Message */}
-                    <div className="flex justify-center">
-                      <Badge variant="secondary" className="text-xs">
-                        공동구매 채팅방에 입장하셨습니다
-                      </Badge>
-                    </div>
+          <div className="grid lg:grid-cols-4 gap-4">
+            {/* 채팅 영역 - 3칸 */}
+            <div className="lg:col-span-3">
+              {/* 높이 */}
+              <Card className="flex flex-col h-[calc(100vh-250px)]">
+                <CardContent
+                  ref={messagesContainerRef}
+                  className="flex-1 overflow-y-auto p-4"
+                >
+                  {messages.map((msg, index) => {
+                    const isMyMessage =
+                      loginMember && msg.senderId === loginMember.id;
 
-                    {messages.map((msg) => (
-                      <div key={msg.id} className={`flex gap-3 ${msg.isMe ? "flex-row-reverse" : ""}`}>
-                        {!msg.isMe && (
+                    const isSystemMessage =
+                      msg.type === MessageType.ENTER ||
+                      msg.type === MessageType.LEAVE ||
+                      msg.type === MessageType.KICK ||
+                      msg.type === ("TRANSFER_LEADER" as any);
+
+                    if (isSystemMessage) {
+                      return (
+                        <div
+                          key={msg.id || index}
+                          className="flex justify-center my-2"
+                        >
+                          <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                            {msg.content}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={msg.id || index}
+                        className={`flex gap-2 mb-4 ${
+                          isMyMessage ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        {!isMyMessage && (
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs">{msg.author[0]}</AvatarFallback>
+                            <AvatarFallback className="text-xs">
+                              {msg.senderNickname?.[0] || "?"}
+                            </AvatarFallback>
                           </Avatar>
                         )}
-                        <div className={`flex flex-col ${msg.isMe ? "items-end" : "items-start"} max-w-[70%]`}>
-                          {!msg.isMe && (
+                        <div
+                          className={`flex flex-col ${
+                            isMyMessage ? "items-end" : "items-start"
+                          } max-w-[70%]`}
+                        >
+                          {!isMyMessage && (
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-medium">{msg.author}</span>
-                              {msg.role === "주최자" && (
+                              <span className="text-sm font-medium">
+                                {msg.senderNickname || "알 수 없음"}
+                              </span>
+                              {post.creatorId === msg.senderId && (
                                 <Badge variant="secondary" className="text-xs">
                                   주최자
                                 </Badge>
@@ -168,124 +345,198 @@ export default function GroupBuyingChatPage({
                             </div>
                           )}
                           <div
-                            className={`rounded-lg px-4 py-2 ${
-                              msg.isMe ? "bg-primary text-primary-foreground" : "bg-muted"
+                            className={`rounded-lg px-3 py-2 ${
+                              isMyMessage
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
                             }`}
                           >
-                            <p className="text-sm leading-relaxed">{msg.content}</p>
+                            <p className="text-sm whitespace-pre-wrap">
+                              {msg.content}
+                            </p>
                           </div>
-                          <span className="text-xs text-muted-foreground mt-1">{msg.time}</span>
+                          <span className="text-xs text-muted-foreground mt-1">
+                            {msg.createdAt
+                              ? format(new Date(msg.createdAt), "HH:mm", {
+                                  locale: ko,
+                                })
+                              : ""}
+                          </span>
                         </div>
                       </div>
-                    ))}
-                  </CardContent>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </CardContent>
 
-                  {/* Message Input */}
-                  <div className="border-t p-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="메시지를 입력하세요..."
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            handleSendMessage()
-                          }
-                        }}
-                        className="flex-1"
-                      />
-                      <Button onClick={handleSendMessage}>
-                        <Send className="h-4 w-4" />
-                      </Button>
+                <div className="border-t p-4 shrink-0">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="메시지를 입력하세요..."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="flex-1"
+                      disabled={!isConnected}
+                    />
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!isConnected || !message.trim()}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {!isConnected && (
+                    <p className="text-xs text-destructive mt-2">
+                      연결 중... 잠시만 기다려주세요.
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* 사이드바 - 1칸 */}
+            <div className="lg:col-span-1 space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">공동구매 정보</h3>
+                    {getStatusBadge(post.status)}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      모집 인원
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Users className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-primary">
+                        {post.currentParticipants}/{post.targetParticipants}명
+                      </span>
                     </div>
                   </div>
-                </Card>
-              </div>
 
-              {/* Sidebar */}
-              <div className="lg:col-span-1 space-y-4">
-                {/* Group Info */}
-                <Card>
-                  <CardHeader>
-                    <h3 className="font-semibold">공동구매 정보</h3>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">모집 인원</span>
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4 text-primary" />
-                        <span className="font-semibold text-primary">
-                          {groupBuy.currentPeople}/{groupBuy.targetPeople}명
-                        </span>
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs text-muted-foreground">
+                          목표 금액
+                        </p>
+                        <p className="text-sm font-medium">
+                          {post.targetAmount.toLocaleString()}원
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          현재: {post.currentAmount.toLocaleString()}원
+                        </p>
                       </div>
                     </div>
+                  </div>
 
-                    <Separator />
+                  <Separator />
 
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-2">
-                        <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">1인당 금액</p>
-                          <p className="text-sm font-medium">{groupBuy.price}</p>
-                        </div>
-                      </div>
+                  <div className="flex items-start gap-2 bg-primary/5 rounded-lg p-3">
+                    <DollarSign className="h-4 w-4 text-primary mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground">
+                        1인당 금액
+                      </p>
+                      <p className="text-base font-bold text-primary">
+                        {Math.ceil(
+                          post.targetAmount / post.targetParticipants
+                        ).toLocaleString()}
+                        원
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        목표 금액 ÷ {post.targetParticipants}명
+                      </p>
+                    </div>
+                  </div>
 
-                      <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">만날 장소</p>
-                          <p className="text-sm font-medium">{groupBuy.meetingPlace}</p>
-                        </div>
-                      </div>
+                  <Separator />
 
-                      <div className="flex items-start gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">만날 시간</p>
-                          <p className="text-sm font-medium">{groupBuy.meetingTime}</p>
-                        </div>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs text-muted-foreground">지역</p>
+                        <p className="text-sm font-medium">{post.region}</p>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
 
-                {/* Participants */}
-                <Card>
-                  <CardHeader>
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      참여자 ({participants.length})
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {participants.map((participant, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <div className="relative">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs">{participant.name[0]}</AvatarFallback>
-                          </Avatar>
-                          <div
-                            className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background ${
-                              participant.status === "online" ? "bg-green-500" : "bg-gray-400"
-                            }`}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium truncate">{participant.name}</p>
-                            {participant.role === "주최자" && (
-                              <Badge variant="secondary" className="text-xs">
-                                주최자
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs text-muted-foreground">마감일</p>
+                        <p className="text-sm font-medium">
+                          {format(new Date(post.deadline), "yyyy년 M월 d일", {
+                            locale: ko,
+                          })}
+                        </p>
                       </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-muted-foreground">
+                        진행률
+                      </span>
+                      <span className="text-xs font-medium">
+                        {post.progressPercentage}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all"
+                        style={{ width: `${post.progressPercentage}%` }}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <h3 className="font-semibold">
+                    참여자 ({participants.length})
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {participants.map((participant, index) => {
+                    const nickname = getParticipantNickname(participant);
+                    const isCreator =
+                      post.creatorId === (participant as any).memberId;
+
+                    return (
+                      <div key={index} className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">
+                            {nickname[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{nickname}</p>
+                        </div>
+                        {isCreator && (
+                          <Badge variant="secondary" className="text-xs">
+                            주최자
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
@@ -293,5 +544,5 @@ export default function GroupBuyingChatPage({
 
       <Footer />
     </div>
-  )
+  );
 }
