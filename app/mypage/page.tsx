@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
@@ -10,6 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/app/global/auth/useAuth";
 import {
   FileText,
@@ -25,10 +32,12 @@ import {
   ChefHat,
   ChevronDown,
   ChevronUp,
+  Share2,
 } from "lucide-react";
 import {
   fetchSavedRecipes,
   deleteRecipe,
+  createShareLink,
   type RecipeResponse,
   mapCategoryToDisplay,
   mapCookingTimeToDisplay,
@@ -130,6 +139,12 @@ export default function MyPage() {
 
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareTargetRecipe, setShareTargetRecipe] = useState<RecipeResponse | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [isCopying, setIsCopying] = useState(false);
+  const [isCopySuccess, setIsCopySuccess] = useState(false);
+  const shareInputRef = useRef<HTMLInputElement | null>(null);
 
   // const bookmarkedPosts = [
   //   {
@@ -432,6 +447,39 @@ export default function MyPage() {
     } catch (error) {
       console.error("레시피 삭제 실패:", error);
       alert("레시피 삭제에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const openShareModal = async (recipe: RecipeResponse) => {
+    try {
+      const shareLinkData = await createShareLink(recipe.id);
+      setShareLink(shareLinkData.shareUrl);
+      setShareTargetRecipe(recipe);
+      setShareModalOpen(true);
+      setIsCopySuccess(false);
+    } catch (error) {
+      console.error("공유 링크 생성 실패:", error);
+      alert("공유 링크 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink) return;
+    setIsCopying(true);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+      } else if (shareInputRef.current) {
+        shareInputRef.current.select();
+        document.execCommand("copy");
+      }
+      setIsCopySuccess(true);
+      setTimeout(() => setIsCopySuccess(false), 2000);
+    } catch (error) {
+      console.error("공유 링크 복사 실패:", error);
+      alert("링크 복사에 실패했어요. 다시 시도해주세요.");
+    } finally {
+      setIsCopying(false);
     }
   };
 
@@ -1009,7 +1057,36 @@ export default function MyPage() {
                                       </div>
                                     </div>
 
+                                    <div className="pt-6 space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold">관련 유튜브 영상</h3>
+                                      </div>
+                                      {recipe.youtubeUrl ? (
+                                        <div className="aspect-video rounded-lg overflow-hidden border">
+                                          <iframe
+                                            title={`${recipe.title} 관련 유튜브 영상`}
+                                            src={recipe.youtubeUrl}
+                                            className="w-full h-full"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowFullScreen
+                                          />
+                                        </div>
+                                      ) : (
+                                        <p className="text-sm text-muted-foreground">
+                                          저장된 유튜브 영상이 없습니다.
+                                        </p>
+                                      )}
+                                    </div>
+
                                     <div className="flex gap-2 pt-4">
+                                      <Button
+                                        variant="outline"
+                                        className="flex-1 bg-transparent"
+                                        onClick={() => openShareModal(recipe)}
+                                      >
+                                        <Share2 className="h-4 w-4 mr-2" />
+                                        공유
+                                      </Button>
                                       <Button
                                         variant="outline"
                                         className="flex-1 text-destructive bg-transparent"
@@ -1127,6 +1204,48 @@ export default function MyPage() {
       </main>
 
       <Footer />
+
+      {/* 공유 링크 모달 */}
+      <Dialog
+        open={shareModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShareModalOpen(false);
+            setShareLink("");
+            setIsCopySuccess(false);
+            setShareTargetRecipe(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-lg font-semibold">
+              레시피 공유 링크
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              링크를 복사해 친구에게 보내면 전체 레시피 내용을 바로 볼 수
+              있어요.
+            </p>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                ref={shareInputRef}
+                value={shareLink}
+                readOnly
+                onFocus={(e) => e.target.select()}
+                className="flex-1"
+              />
+              <Button className="whitespace-nowrap" onClick={copyShareLink} disabled={isCopying}>
+                {isCopying ? "복사 중..." : "링크 복사"}
+              </Button>
+            </div>
+            {isCopySuccess && (
+              <p className="text-xs text-green-600">복사되었어요!</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -89,27 +89,22 @@ export default function ChatPage() {
     <>
       <Header />
 
+      {/* 타이틀 섹션 - 공동구매와 완전히 동일 */}
+      <div className="bg-[#FDF6E9] border-b">
+        <div className="container mx-auto px-4 py-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">소모임 채팅</h1>
+          <p className="text-[15px] text-gray-600">
+            로그인하면 소모임을 만들고 참여할 수 있어요!
+          </p>
+        </div>
+      </div>
+
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          {/* 헤더 */}
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold">소모임 채팅</h1>
-              <p className="text-muted-foreground mt-2">
-                {isLogin
-                  ? "관심있는 소모임에 참여해보세요!"
-                  : "로그인하면 소모임을 만들고 참여할 수 있어요!"}
-              </p>
-            </div>
-            <Button onClick={handleCreateClick} className="gap-2">
-              <Plus className="w-4 h-4" />
-              소모임 만들기
-            </Button>
-          </div>
-
-          {/* 가로 스크롤 카테고리 필터 */}
-          <div className="mb-6">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {/* 카테고리와 액션 버튼 */}
+          <div className="flex items-center justify-between mb-8">
+            {/* 가로 스크롤 카테고리 필터 */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide flex-1">
               {CATEGORIES.map((cat) => {
                 const Icon =
                   cat.value !== "all" ? getCategoryIcon(cat.value) : null;
@@ -135,10 +130,16 @@ export default function ChatPage() {
                 );
               })}
             </div>
+
+            {/* 소모임 만들기 버튼 */}
+            <Button onClick={handleCreateClick} className="gap-2 ml-4 shrink-0">
+              <Plus className="w-4 h-4" />
+              소모임 만들기
+            </Button>
           </div>
 
           {/* 결과 수 */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-8">
             <p className="text-sm text-muted-foreground">
               <span className="font-semibold text-foreground">
                 {filteredRooms.length}개
