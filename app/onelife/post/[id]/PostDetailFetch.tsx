@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPostDetail, deletePost } from "@/app/api/post/postapi";
+import {
+  getPostDetail,
+  deletePost,
+  increasePostView,
+} from "@/app/api/post/postapi";
 import type { PostResponse } from "@/app/onelife/types/postResponse";
 
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -23,18 +26,33 @@ import PostComments from "./postcomments";
 import PostMenuWrapper from "./postmenuwrapper";
 import { useRouter } from "next/navigation";
 import ReactionButtons from "./reactionbuttons";
+import BookmarkButton from "@/app/bookmark/BookmarkButton";
+import { set } from "date-fns";
 
 export default function PostDetailFetch({ id }: { id: string }) {
   const [post, setPost] = useState<PostResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewCount, setViewCount] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    getPostDetail(id).then((data) => {
+    async function fetchData() {
+      if (!viewCount) {
+        try {
+          await increasePostView(id);
+        } catch (e) {
+          console.warn("조회수 증가 오류:", e);
+        }
+        setViewCount(true);
+      }
+
+      const data = await getPostDetail(id);
       setPost(data);
       setLoading(false);
-    });
-  }, [id]);
+    }
+
+    fetchData();
+  }, [id, viewCount]);
 
   const handleEdit = () => {
     if (!post?.id) {
@@ -111,9 +129,11 @@ export default function PostDetailFetch({ id }: { id: string }) {
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
-                  팔로우
-                </Button>
+                <BookmarkButton
+                  postId={post.id}
+                  type="POST"
+                  isBookmarked={post.bookmarked}
+                />
               </div>
 
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -137,17 +157,19 @@ export default function PostDetailFetch({ id }: { id: string }) {
               {post.content}
             </div>
 
-            {post.attachmentPath && (
+            {post.imageUrls && post.imageUrls.length > 0 && (
               <>
                 <Separator className="mb-8" />
-                <img
-                  src={post.attachmentPath}
-                  alt="첨부 이미지"
-                  className="w-full max-h-[400px] object-cover rounded-lg"
-                />
+                {post.imageUrls.map((url, idx) => (
+                  <img
+                    key={idx}
+                    src={url}
+                    alt={`첨부 이미지 ${idx}`}
+                    className="w-full max-h-[400px] object-cover rounded-lg mb-6"
+                  />
+                ))}
               </>
             )}
-
             <Separator className="my-12" />
 
             <ReactionButtons post={post} />

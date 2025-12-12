@@ -1,8 +1,4 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
-import type {
-  PostRequestDto,
-  PostResponse,
-} from "../../onelife/types/postResponse";
 
 export async function getOneLifePosts({
   page = 0,
@@ -57,17 +53,11 @@ export async function deletePost(id: string | number) {
   return true;
 }
 
-export async function updatePost(
-  id: string,
-  dto: PostRequestDto
-): Promise<PostResponse> {
+export async function updatePost(id: string, formData: FormData) {
   const res = await fetch(`${BASE_URL}/posts/onelife/${id}`, {
     method: "PUT",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(dto),
+    body: formData,
   });
 
   if (!res.ok) {
@@ -80,7 +70,6 @@ export async function updatePost(
   return json.data;
 }
 
-//ractionbuttons.tsx
 export async function postLike(postId: number) {
   const res = await fetch(`${BASE_URL}/posts/${postId}/likes/like`, {
     method: "POST",
@@ -96,7 +85,7 @@ export async function postLike(postId: number) {
     alert("좋아요 처리에 실패했습니다.");
   }
 
-  return res.json(); // RsData 리턴
+  return res.json();
 }
 
 export async function postDislike(postId: number) {
@@ -142,4 +131,17 @@ export async function getDislikeCount(postId: number) {
   }
 
   return res.json();
+}
+
+export async function increasePostView(id: string | number) {
+  const res = await fetch(`${BASE_URL}/posts/onelife/${id}/view`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    console.warn("조회수 증가 실패");
+  }
+
+  return res.json().catch(() => null);
 }

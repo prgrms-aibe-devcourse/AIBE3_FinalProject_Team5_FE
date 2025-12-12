@@ -6,17 +6,14 @@ export interface CreatePostDto {
   content: string;
   attachmentPath: string;
   postType: string;
-  tags: string[];
+  tags?: string[];
+  files?: File[];
 }
 
-export const createPost = async (dto: CreatePostDto) => {
+export const createPost = async (formData: FormData) => {
   const res = await fetch(`${BASE_URL}/posts/onelife`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json;charset=UTF-8",
-    },
-    body: JSON.stringify(dto),
+    body: formData,
     credentials: "include",
   });
 

@@ -21,10 +21,7 @@ import {
 import { ImagePlus, X } from "lucide-react";
 
 import { getPostDetail, updatePost } from "@/app/api/post/postapi";
-import type {
-  PostResponse,
-  PostRequestDto,
-} from "@/app/onelife/types/postResponse";
+import type { PostResponse } from "@/app/onelife/types/postResponse";
 
 export default function EditPostPage({ id }: { id: string }) {
   const router = useRouter();
@@ -37,6 +34,7 @@ export default function EditPostPage({ id }: { id: string }) {
   const [tags, setTags] = useState("");
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
 
   useEffect(() => {
     async function fetchData() {
@@ -57,8 +55,8 @@ export default function EditPostPage({ id }: { id: string }) {
 
         setTags(data.tags?.join(", ") ?? "");
 
-        if (data.attachmentPath) {
-          setImages([data.attachmentPath]);
+        if (data.imageUrls) {
+          setImages(data.imageUrls);
         }
       } catch (err) {
         console.error(err);
@@ -74,15 +72,19 @@ export default function EditPostPage({ id }: { id: string }) {
     const files = e.target.files;
     if (!files) return;
 
-    const newImages: string[] = [];
+    const previewList: string[] = [];
+    const fileList: File[] = [];
 
     Array.from(files).forEach((file) => {
+      fileList.push(file);
+
       const reader = new FileReader();
       reader.onloadend = () => {
-        newImages.push(reader.result as string);
+        previewList.push(reader.result as string);
 
-        if (newImages.length === files.length) {
-          setImages((prev) => [...prev, ...newImages]);
+        if (previewList.length === files.length) {
+          setImages((prev) => [...prev, ...previewList]);
+          setImageFiles((prev) => [...prev, ...fileList]);
         }
       };
       reader.readAsDataURL(file);
@@ -91,26 +93,38 @@ export default function EditPostPage({ id }: { id: string }) {
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!post) return;
 
-    const dto: PostRequestDto = {
-      title,
-      content,
-      attachmentPath: images[0] || post.attachmentPath || "",
-      postType:
-        category === "꿀팁" ? "TIP" : category === "자유" ? "FREE" : "INFO",
-      tags: tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    };
+    const formData = new FormData();
+    formData.append("_method", "PUT");
+    formData.append("title", title);
+    formData.append("content", content);
+
+    const postType =
+      category === "꿀팁" ? "TIP" : category === "자유" ? "FREE" : "INFO";
+    formData.append("postType", postType);
+
+    tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .forEach((tag) => formData.append("tags", tag));
+
+    images.forEach((img) => {
+      if (img.startsWith("http")) {
+        formData.append("remainFileUrls", img);
+      }
+    });
+
+    imageFiles.forEach((file) => formData.append("files", file));
 
     try {
-      await updatePost(id, dto);
+      await updatePost(id, formData);
       alert("게시글이 수정되었습니다!");
       router.push(`/onelife/post/${id}`);
     } catch (err: any) {
