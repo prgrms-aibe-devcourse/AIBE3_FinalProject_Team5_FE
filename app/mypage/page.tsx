@@ -358,7 +358,7 @@ export default function MyPage() {
 
   useEffect(() => {
     getMemberPosts();
-  }, [postPage]);
+  }, [postPage, postCategory]);
 
   // 저장된 레시피, 소그룹, 공동구매 목록 불러오기
   useEffect(() => {
