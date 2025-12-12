@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/global/auth/useAuth";
 import { ChatRoom } from "@/types/chat";
-import { joinChatRoom } from "@/lib/api/chatApi";
+import { joinChatRoom, fetchChatParticipants } from "@/lib/api/chatApi";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Users, MapPin, Calendar, User } from "lucide-react";
@@ -23,11 +23,47 @@ export default function ChatRoomDetailModal({
   const router = useRouter();
   const { isLogin, loginMember } = useAuth();
   const [isJoining, setIsJoining] = useState(false);
+  const [isParticipant, setIsParticipant] = useState(false);
+  const [isCheckingParticipant, setIsCheckingParticipant] = useState(true);
 
   const isFull = chatRoom.currentParticipants >= chatRoom.maxParticipants;
   const isCreator = loginMember?.id === chatRoom.creatorId;
 
-  // 쿠키 기반 - 채팅방 참여
+  // 참여자 여부 확인 (컴포넌트 마운트 시)
+  useEffect(() => {
+    const checkParticipant = async () => {
+      if (!loginMember) {
+        setIsCheckingParticipant(false);
+        return;
+      }
+
+      try {
+        // 참여자 목록 조회
+        const participants = await fetchChatParticipants(chatRoom.id);
+
+        // 현재 사용자가 참여 중인지 확인
+        const isUserParticipant = participants.some(
+          (p) => p.memberId === loginMember.id
+        );
+
+        setIsParticipant(isUserParticipant);
+        console.log("✅ 참여자 확인:", {
+          chatRoomId: chatRoom.id,
+          userId: loginMember.id,
+          isParticipant: isUserParticipant,
+        });
+      } catch (error) {
+        console.error("❌ 참여자 확인 실패:", error);
+        setIsParticipant(false);
+      } finally {
+        setIsCheckingParticipant(false);
+      }
+    };
+
+    checkParticipant();
+  }, [chatRoom.id, loginMember]);
+
+  // 쿠키 기반 - 채팅방 참여 또는 입장
   const handleJoin = async () => {
     // 로그인 체크
     if (!isLogin || !loginMember) {
@@ -37,21 +73,21 @@ export default function ChatRoomDetailModal({
       return;
     }
 
-    // 생성자는 바로 입장 (API 호출 X)
-    if (isCreator) {
-      console.log("[참여하기] 생성자 → 바로 입장");
+    // 이미 참여 중이면 바로 입장
+    if (isParticipant || isCreator) {
+      console.log("[입장하기] 이미 참여 중 → 바로 입장");
       onClose();
       router.push(`/groups/${chatRoom.id}/chat`);
       return;
     }
 
+    // 참여하기 (새로 참여)
     try {
       setIsJoining(true);
       console.log("[참여하기] API 호출:", {
         chatRoomId: chatRoom.id,
       });
 
-      // 쿠키 기반 - 파라미터 간소화
       await joinChatRoom(chatRoom.id);
 
       console.log("✅ [참여하기] API 성공 - 새로 참여");
@@ -90,9 +126,19 @@ export default function ChatRoomDetailModal({
 
   // 버튼 텍스트 결정
   const getButtonText = () => {
+    if (isCheckingParticipant) return "확인 중...";
     if (isJoining) return "처리 중...";
-    if (isCreator) return "입장하기";
-    return "참여하기";
+    if (isParticipant || isCreator) return "입장하기"; // 참여자면 입장하기
+    return "참여하기"; // 비참여자면 참여하기
+  };
+
+  // 버튼 비활성화 조건
+  const isButtonDisabled = () => {
+    return (
+      isCheckingParticipant ||
+      isJoining ||
+      (isFull && !isParticipant && !isCreator)
+    );
   };
 
   return (
@@ -172,6 +218,13 @@ export default function ChatRoomDetailModal({
               </div>
             </div>
           </div>
+
+          {/* 참여 상태 표시 */}
+          {isParticipant && !isCreator && (
+            <div className="bg-primary/10 text-primary px-4 py-2 rounded-md text-sm text-center">
+              ✅ 이미 참여 중인 소모임입니다
+            </div>
+          )}
         </div>
 
         {/* 버튼 */}
@@ -181,7 +234,7 @@ export default function ChatRoomDetailModal({
           </Button>
           <Button
             onClick={handleJoin}
-            disabled={isJoining}
+            disabled={isButtonDisabled()}
             className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50"
           >
             {getButtonText()}

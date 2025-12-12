@@ -9,8 +9,6 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import Image from 'next/image';
 import type { Restaurant } from '@/lib/restaurants';
 import { useAuth } from '@/app/global/auth/useAuth';
 import {
@@ -18,7 +16,13 @@ import {
     recommendRestaurant,
     createRestaurant,
     createRestaurantWithOpts,
+    fetchRestaurantById,
+    fetchSoloVoteSummary,
+    postSoloVote,
+    deleteSoloVote,
 } from '@/lib/restaurants';
+import RestaurantDetailDialogContent from './RestaurantDetailDialogContent';
+import RestaurantDetailActions from './RestaurantDetailActions';
 
 type Props = {
     restaurant: Restaurant | null;
@@ -26,6 +30,7 @@ type Props = {
     onOpenChange: (open: boolean) => void;
     onDeleted: (id: number) => void;
     onEditLocal?: (r: Restaurant) => void;
+    onCreated?: (r: Restaurant) => void;
 };
 
 export default function RestaurantDetailDialog({
@@ -34,6 +39,7 @@ export default function RestaurantDetailDialog({
     onOpenChange,
     onDeleted,
     onEditLocal,
+    onCreated,
 }: Props) {
     const router = useRouter();
     const { loginMember, isLogin } = useAuth();
@@ -48,19 +54,11 @@ export default function RestaurantDetailDialog({
             loginMember &&
             Number(loginMember.id) === ownerId
     );
-    // isUserCreated means this restaurant was created by the current user
     const isUserCreated = isOwner;
     const rawIsLocal = Boolean((restaurant as any)?.isLocal);
     const idNum = Number((restaurant as any)?.id ?? 0);
-    // Broaden detection: treat item as "local" UI when:
-    // - explicit `isLocal` flag is true,
-    // - id is a temporary negative id,
-    // - it has an `ownerId` (user-created), or
-    // - it was created by the current user (isUserCreated)
     const hasOwnerFlag =
         (restaurant as any)?.ownerId ?? (restaurant as any)?.memberId ?? null;
-
-    // Also consult sessionStorage for restaurants created by this client.
     let sessionMarkerMatch = false;
     try {
         const stored = JSON.parse(
@@ -94,9 +92,7 @@ export default function RestaurantDetailDialog({
                 }
             }
         }
-    } catch (e) {
-        /* ignore */
-    }
+    } catch (e) {}
 
     const isLocalDetected =
         rawIsLocal ||
@@ -105,9 +101,6 @@ export default function RestaurantDetailDialog({
         isUserCreated ||
         sessionMarkerMatch;
 
-    // Robustness: if this appears to be a Kakao-imported place (has `placeUrl` or
-    // `placeId`) and the current user is NOT the owner, treat it as non-local
-    // regardless of owner flags to avoid accidentally showing local edit UI.
     const looksLikeKakao = Boolean(
         (restaurant as any)?.placeUrl || (restaurant as any)?.placeId
     );
@@ -120,15 +113,64 @@ export default function RestaurantDetailDialog({
     const [soloYes, setSoloYes] = useState<number>(initialYes);
     const [soloNo, setSoloNo] = useState<number>(initialNo);
     const [userSoloVote, setUserSoloVote] = useState<'yes' | 'no' | null>(null);
-
-    useEffect(() => {}, [
+    useEffect(() => {
+        try {
+            setSoloYes(initialYes ?? 0);
+            setSoloNo(initialNo ?? 0);
+            try {
+                const key = `solo_vote_${(restaurant as any)?.id}`;
+                const v = localStorage.getItem(key);
+                if (v === 'yes' || v === 'no')
+                    setUserSoloVote(v as 'yes' | 'no');
+                else setUserSoloVote(null);
+            } catch (e) {
+                setUserSoloVote(null);
+            }
+        } catch (e) {}
+    }, [
         restaurant,
+        initialYes,
+        initialNo,
         ownerId,
         isOwner,
         rawIsLocal,
         isLocalDetected,
         effectiveIsLocal,
     ]);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                if (!restaurant) return;
+                const id = (restaurant as any)?.id;
+                if (!id || Number(id) <= 0) return;
+                const summary = await fetchSoloVoteSummary(id);
+                if (!mounted) return;
+                setSoloYes(summary.yesCount ?? 0);
+                setSoloNo(summary.noCount ?? 0);
+                setUserSoloVote(
+                    summary.myChoice === null
+                        ? null
+                        : summary.myChoice
+                        ? 'yes'
+                        : 'no'
+                );
+                try {
+                    const key = `solo_vote_${(restaurant as any).id}`;
+                    if (summary.myChoice === null) localStorage.removeItem(key);
+                    else
+                        localStorage.setItem(
+                            key,
+                            summary.myChoice ? 'yes' : 'no'
+                        );
+                } catch (e) {}
+            } catch (e) {}
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [restaurant]);
 
     useEffect(() => {
         try {
@@ -157,12 +199,8 @@ export default function RestaurantDetailDialog({
                     'kakaoPlaceUrlCache',
                     JSON.stringify(cache)
                 );
-            } catch (e) {
-                // ignore store errors
-            }
-        } catch (e) {
-            /* ignore */
-        }
+            } catch (e) {}
+        } catch (e) {}
     }, [restaurant]);
 
     useEffect(() => {
@@ -186,7 +224,7 @@ export default function RestaurantDetailDialog({
         }
     };
 
-    const handleSoloVote = (vote: 'yes' | 'no') => {
+    const handleSoloVote = async (vote: 'yes' | 'no') => {
         if (!isLogin) {
             if (
                 confirm(
@@ -198,21 +236,278 @@ export default function RestaurantDetailDialog({
             }
             return;
         }
-
         const prev = userSoloVote;
+        let id = (restaurant as any)?.id;
+        const looksLikeKakao = Boolean(
+            (restaurant as any)?.placeUrl || (restaurant as any)?.placeId
+        );
+        if (id && Number(id) > 0) {
+            try {
+                await fetchRestaurantById(id);
+            } catch (probeErr) {
+                if (looksLikeKakao) {
+                    if (!isLogin) {
+                        if (
+                            confirm(
+                                '투표하려면 로그인해야 합니다. 로그인 페이지로 이동하시겠습니까?'
+                            )
+                        ) {
+                            router.push('/login');
+                            onOpenChange(false);
+                        }
+                        return;
+                    }
+
+                    try {
+                        const createPayload = {
+                            name: restaurant?.name ?? '',
+                            jibunAddress:
+                                (restaurant as any)?.jibunAddress ?? '',
+                            roadAddress: (restaurant as any)?.roadAddress ?? '',
+                            phone: (restaurant as any)?.phone ?? undefined,
+                            latitude:
+                                (restaurant as any)?.latitude ??
+                                (restaurant as any)?.lat ??
+                                0,
+                            longitude:
+                                (restaurant as any)?.longitude ??
+                                (restaurant as any)?.lng ??
+                                0,
+                        };
+
+                        let created: any = null;
+                        if (
+                            shouldCreateAsImported(
+                                effectiveIsLocal,
+                                looksLikeKakao
+                            )
+                        ) {
+                            created = await createRestaurantWithOpts(
+                                createPayload,
+                                {
+                                    asImported: true,
+                                }
+                            );
+                        } else {
+                            created = await createRestaurant(createPayload);
+                        }
+
+                        if (created && created.id) {
+                            id = created.id;
+                            const payload = buildSelectedPayload(
+                                Object.assign({}, created, {
+                                    placeUrl:
+                                        (created as any)?.placeUrl ||
+                                        (restaurant as any)?.placeUrl,
+                                })
+                            );
+                            storeSelected(payload);
+                            try {
+                                if (onCreated) onCreated(created as Restaurant);
+                            } catch (e) {
+                                console.error('onCreated handler failed', e);
+                            }
+                            console.debug(
+                                '[RestaurantDetailDialog] created for solo-vote',
+                                created
+                            );
+                        }
+                    } catch (e) {
+                        console.error(
+                            'create imported restaurant for solo-vote failed',
+                            e
+                        );
+                        window.alert(
+                            '투표를 위해 식당을 서버에 등록하는 중 오류가 발생했습니다.'
+                        );
+                        return;
+                    }
+                } else {
+                    window.alert('이 식당에 대한 서버 조회에 실패했습니다.');
+                    return;
+                }
+            }
+        }
+
+        if (!id || Number(id) <= 0) {
+            if (!isLogin) {
+                if (
+                    confirm(
+                        '투표하려면 로그인해야 합니다. 로그인 페이지로 이동하시겠습니까?'
+                    )
+                ) {
+                    router.push('/login');
+                    onOpenChange(false);
+                }
+                return;
+            }
+
+            try {
+                const createPayload = {
+                    name: restaurant?.name ?? '',
+                    jibunAddress: (restaurant as any)?.jibunAddress ?? '',
+                    roadAddress: (restaurant as any)?.roadAddress ?? '',
+                    phone: (restaurant as any)?.phone ?? undefined,
+                    latitude:
+                        (restaurant as any)?.latitude ??
+                        (restaurant as any)?.lat ??
+                        0,
+                    longitude:
+                        (restaurant as any)?.longitude ??
+                        (restaurant as any)?.lng ??
+                        0,
+                };
+
+                const looksLikeKakao = Boolean(
+                    (restaurant as any)?.placeUrl ||
+                        (restaurant as any)?.placeId
+                );
+
+                let created: any = null;
+                if (shouldCreateAsImported(effectiveIsLocal, looksLikeKakao)) {
+                    created = await createRestaurantWithOpts(createPayload, {
+                        asImported: true,
+                    });
+                } else {
+                    created = await createRestaurant(createPayload);
+                }
+
+                if (created && created.id) {
+                    id = created.id;
+                    const payload = buildSelectedPayload(
+                        Object.assign({}, created, {
+                            placeUrl:
+                                (created as any)?.placeUrl ||
+                                (restaurant as any)?.placeUrl,
+                        })
+                    );
+                    storeSelected(payload);
+                    try {
+                        if (onCreated) onCreated(created as Restaurant);
+                    } catch (e) {
+                        console.error('onCreated handler failed', e);
+                    }
+                    console.debug(
+                        '[RestaurantDetailDialog] created (no-id case) ',
+                        created
+                    );
+                }
+            } catch (e) {
+                console.error(
+                    'create imported restaurant for solo-vote failed',
+                    e
+                );
+                window.alert(
+                    '투표를 위해 식당을 서버에 등록하는 중 오류가 발생했습니다.'
+                );
+                return;
+            }
+        }
+
         if (prev === vote) {
             if (vote === 'yes') setSoloYes((s) => Math.max(0, s - 1));
             else setSoloNo((s) => Math.max(0, s - 1));
             setUserSoloVote(null);
             setLocalVote(null);
+            (async () => {
+                try {
+                    await deleteSoloVote(id);
+                } catch (e) {
+                    try {
+                        const summary = await fetchSoloVoteSummary(id);
+                        setSoloYes(summary.yesCount ?? 0);
+                        setSoloNo(summary.noCount ?? 0);
+                        setUserSoloVote(
+                            summary.myChoice === null
+                                ? null
+                                : summary.myChoice
+                                ? 'yes'
+                                : 'no'
+                        );
+                    } catch (e2) {}
+                }
+            })();
             return;
         }
+
         if (vote === 'yes') setSoloYes((s) => s + 1);
         else setSoloNo((s) => s + 1);
         if (prev === 'yes') setSoloYes((s) => Math.max(0, s - 1));
         if (prev === 'no') setSoloNo((s) => Math.max(0, s - 1));
         setUserSoloVote(vote);
         setLocalVote(vote);
+
+        (async () => {
+            try {
+                let resp = await postSoloVote(id, vote === 'yes');
+                if (
+                    (resp.myChoice === null || resp.myChoice === undefined) &&
+                    looksLikeKakao
+                ) {
+                    try {
+                        const createPayload = {
+                            name: restaurant?.name ?? '',
+                            jibunAddress:
+                                (restaurant as any)?.jibunAddress ?? '',
+                            roadAddress: (restaurant as any)?.roadAddress ?? '',
+                            phone: (restaurant as any)?.phone ?? undefined,
+                            latitude:
+                                (restaurant as any)?.latitude ??
+                                (restaurant as any)?.lat ??
+                                0,
+                            longitude:
+                                (restaurant as any)?.longitude ??
+                                (restaurant as any)?.lng ??
+                                0,
+                        };
+                        const created = await createRestaurantWithOpts(
+                            createPayload,
+                            {
+                                asImported: true,
+                            }
+                        );
+                        console.debug(
+                            '[RestaurantDetailDialog] fallback created for solo-vote',
+                            created
+                        );
+                        if (created && created.id) {
+                            id = created.id;
+                            resp = await postSoloVote(id, vote === 'yes');
+                        }
+                    } catch (e) {
+                        console.error(
+                            'fallback create for solo-vote failed',
+                            e
+                        );
+                    }
+                }
+
+                setSoloYes(resp.yesCount ?? 0);
+                setSoloNo(resp.noCount ?? 0);
+                setUserSoloVote(
+                    resp.myChoice === null ? null : resp.myChoice ? 'yes' : 'no'
+                );
+                try {
+                    const key = `solo_vote_${id}`;
+                    if (resp.myChoice === null) localStorage.removeItem(key);
+                    else
+                        localStorage.setItem(key, resp.myChoice ? 'yes' : 'no');
+                } catch (e) {}
+            } catch (e) {
+                try {
+                    const summary = await fetchSoloVoteSummary(id);
+                    setSoloYes(summary.yesCount ?? 0);
+                    setSoloNo(summary.noCount ?? 0);
+                    setUserSoloVote(
+                        summary.myChoice === null
+                            ? null
+                            : summary.myChoice
+                            ? 'yes'
+                            : 'no'
+                    );
+                } catch (e2) {}
+            }
+        })();
     };
 
     const handleDelete = async () => {
@@ -260,11 +555,7 @@ export default function RestaurantDetailDialog({
                 const curId = (restaurant as any)?.id
                     ? String((restaurant as any).id)
                     : null;
-                // coordinate-based fuzzy match: allow stored placeUrl when the
-                // stored entry's coordinates are very close to the current
-                // restaurant's coordinates (covers cases where id differs
-                // because one is server-created and the other is the Kakao
-                // source object). Also allow when names match closely.
+
                 const parsedLat = parsed && (parsed.latitude ?? parsed.lat);
                 const parsedLng = parsed && (parsed.longitude ?? parsed.lng);
                 const curLat =
@@ -280,7 +571,6 @@ export default function RestaurantDetailDialog({
                 ) {
                     const dLat = Math.abs(Number(parsedLat) - Number(curLat));
                     const dLng = Math.abs(Number(parsedLng) - Number(curLng));
-                    // ~11m tolerance (about 1e-4 degrees)
                     coordsMatch = dLat < 1e-4 && dLng < 1e-4;
                 }
                 const nameMatch =
@@ -298,7 +588,6 @@ export default function RestaurantDetailDialog({
                 if (shouldUseStored) {
                     placeUrl = parsed.placeUrl;
                 } else {
-                    // try fallback to kakaoPlaceUrlCache (name+coords keyed)
                     try {
                         const name = restaurant?.name ?? '';
                         const lat =
@@ -325,545 +614,148 @@ export default function RestaurantDetailDialog({
                                 placeUrl = cache[key];
                             }
                         }
-                    } catch (e) {
-                        /* ignore */
-                    }
+                    } catch (e) {}
                 }
             }
         }
-    } catch (e) {
-        /* ignore parse errors */
-    }
+    } catch (e) {}
+    const buildSelectedPayload = (r: any) => {
+        return {
+            id: r?.id,
+            name: r?.name,
+            roadAddress: r?.roadAddress,
+            jibunAddress: r?.jibunAddress,
+            image: r?.image,
+            phone: r?.phone,
+            averageRating: r?.averageRating,
+            reviewCount: r?.reviewCount,
+            latitude: r?.latitude,
+            longitude: r?.longitude,
+            placeUrl: r?.placeUrl,
+        };
+    };
+
+    const storeSelected = (payload: any) => {
+        try {
+            console.debug(
+                '[RestaurantDetailDialog] storing selectedRestaurant id=',
+                payload?.id
+            );
+            sessionStorage.setItem(
+                'selectedRestaurant',
+                JSON.stringify(payload)
+            );
+        } catch (e) {
+            console.error('store selectedRestaurant', e);
+        }
+    };
+
+    const shouldCreateAsImported = (
+        effectiveLocalFlag: boolean,
+        kakaoLike: boolean
+    ) => {
+        return effectiveLocalFlag ? kakaoLike : true;
+    };
+
+    const handleOpenReviews = async () => {
+        try {
+            const id = (restaurant as any)?.id;
+            if (id && Number(id) > 0) {
+                const payload = buildSelectedPayload(restaurant);
+                storeSelected(payload);
+                router.push(`/restaurants/${id}/reviews`);
+                onOpenChange(false);
+                return;
+            }
+
+            const createPayload = {
+                name: restaurant.name ?? '',
+                jibunAddress: (restaurant as any)?.jibunAddress ?? '',
+                roadAddress: (restaurant as any)?.roadAddress ?? '',
+                phone: (restaurant as any)?.phone ?? undefined,
+                latitude:
+                    (restaurant as any)?.latitude ??
+                    (restaurant as any)?.lat ??
+                    0,
+                longitude:
+                    (restaurant as any)?.longitude ??
+                    (restaurant as any)?.lng ??
+                    0,
+            };
+
+            const looksLikeKakao = Boolean(
+                (restaurant as any)?.placeUrl || (restaurant as any)?.placeId
+            );
+
+            if (!isLogin) {
+                const payload = buildSelectedPayload(
+                    Object.assign({}, createPayload, {
+                        placeUrl: (restaurant as any)?.placeUrl,
+                    })
+                );
+                storeSelected(payload);
+
+                router.push(`/restaurants/preview/reviews`);
+                onOpenChange(false);
+                return;
+            }
+            let created: any;
+            if (shouldCreateAsImported(effectiveIsLocal, looksLikeKakao)) {
+                created = await createRestaurantWithOpts(createPayload, {
+                    asImported: true,
+                });
+            } else {
+                created = await createRestaurant(createPayload);
+            }
+
+            const payload = buildSelectedPayload(
+                Object.assign({}, created, {
+                    placeUrl:
+                        (created as any)?.placeUrl ||
+                        (restaurant as any)?.placeUrl,
+                })
+            );
+            storeSelected(payload);
+            router.push(`/restaurants/${created.id}/reviews`);
+            onOpenChange(false);
+        } catch (e: any) {
+            console.error('review nav/create', e);
+            const msg =
+                e && e.message
+                    ? String(e.message)
+                    : '리뷰 페이지로 이동할 수 없습니다.';
+            window.alert(`리뷰 등록 중 오류: ${msg}`);
+        }
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[520px]">
+            <DialogContent className="sm:max-w-[520px]" showCloseButton={false}>
                 <DialogHeader>
-                    <DialogTitle>{restaurant.name}</DialogTitle>
+                    <DialogTitle>{restaurant?.name}</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-3">
-                    <div className="w-full h-40 relative rounded overflow-hidden bg-gray-100">
-                        <Image
-                            src={
-                                (restaurant as any).image || '/placeholder.svg'
-                            }
-                            alt={restaurant.name}
-                            fill
-                            style={{ objectFit: 'cover' }}
-                        />
-                    </div>
-                    <div className="text-sm space-y-2">
-                        <div>
-                            <strong>도로명:</strong>{' '}
-                            {(restaurant as any).roadAddress}
-                        </div>
-                        <div>
-                            <strong>전화번호:</strong>{' '}
-                            {((restaurant as any).phone && (
-                                <a
-                                    href={`tel:${(restaurant as any).phone}`}
-                                    className="text-primary"
-                                >
-                                    {(restaurant as any).phone}
-                                </a>
-                            )) ||
-                                '-'}
-                        </div>
 
-                        <div className="flex items-center gap-4">
-                            <div>
-                                <strong>평점:</strong>{' '}
-                                {(restaurant as any).averageRating ?? '-'}
-                            </div>
-                            <div className="text-muted-foreground">
-                                ({(restaurant as any).reviewCount ?? 0})
-                            </div>
-                        </div>
-
-                        <div className="pt-2">
-                            <div className="text-sm font-medium">혼밥 자리</div>
-                            <div className="mt-1 flex items-center gap-3">
-                                {(() => {
-                                    const total = soloYes + soloNo;
-                                    const yesPct =
-                                        total === 0
-                                            ? 0
-                                            : Math.round(
-                                                  (soloYes / total) * 100
-                                              );
-                                    const noPct =
-                                        total === 0 ? 0 : 100 - yesPct;
-                                    return (
-                                        <>
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-sm">
-                                                    <button
-                                                        className={`mx-1 px-2 py-1 rounded border text-sm cursor-pointer ${
-                                                            userSoloVote ===
-                                                            'yes'
-                                                                ? 'bg-green-50 border-green-400'
-                                                                : 'bg-white'
-                                                        }`}
-                                                        onClick={() =>
-                                                            handleSoloVote(
-                                                                'yes'
-                                                            )
-                                                        }
-                                                        type="button"
-                                                    >
-                                                        Y
-                                                    </button>
-                                                    <button
-                                                        className={`mx-1 px-2 py-1 rounded border text-sm cursor-pointer ${
-                                                            userSoloVote ===
-                                                            'no'
-                                                                ? 'bg-red-50 border-red-400'
-                                                                : 'bg-white'
-                                                        }`}
-                                                        onClick={() =>
-                                                            handleSoloVote('no')
-                                                        }
-                                                        type="button"
-                                                    >
-                                                        N
-                                                    </button>
-                                                </div>
-
-                                                <div className="text-sm text-muted-foreground">
-                                                    ({yesPct}:{noPct})
-                                                </div>
-                                            </div>
-
-                                            <div className="text-xs text-muted-foreground">
-                                                투표 참여로 다른 이용자에게
-                                                도움이 됩니다.
-                                            </div>
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <RestaurantDetailDialogContent
+                    restaurant={restaurant as Restaurant}
+                    soloYes={soloYes}
+                    soloNo={soloNo}
+                    userSoloVote={userSoloVote}
+                    handleSoloVote={handleSoloVote}
+                />
 
                 <DialogFooter>
-                    <div className="flex gap-2">
-                        {placeUrl ? (
-                            <Button
-                                className="cursor-pointer"
-                                variant="outline"
-                                onClick={() => {
-                                    try {
-                                        const url = placeUrl;
-                                        if (url) {
-                                            window.open(
-                                                url as string,
-                                                '_blank',
-                                                'noopener,noreferrer'
-                                            );
-                                        } else {
-                                            window.alert(
-                                                '해당 식당의 카카오 상세 페이지가 없습니다.'
-                                            );
-                                        }
-                                        onOpenChange(false);
-                                    } catch (e) {
-                                        console.error('open kakao url', e);
-                                        window.alert(
-                                            '카카오 페이지를 열지 못했습니다.'
-                                        );
-                                    }
-                                }}
-                            >
-                                카카오에서 보기
-                            </Button>
-                        ) : null}
-                        {effectiveIsLocal ? (
-                            <>
-                                {isOwner ? (
-                                    <>
-                                        <Button
-                                            className="cursor-pointer"
-                                            variant="outline"
-                                            onClick={() => {
-                                                const id = (restaurant as any)
-                                                    .id;
-                                                // Instead of navigating away, open the inline editor
-                                                if (
-                                                    (restaurant as any) &&
-                                                    typeof (restaurant as any) ===
-                                                        'object'
-                                                ) {
-                                                    if (
-                                                        typeof onEditLocal ===
-                                                        'function'
-                                                    ) {
-                                                        try {
-                                                            onEditLocal(
-                                                                restaurant as Restaurant
-                                                            );
-                                                            onOpenChange(false);
-                                                            return;
-                                                        } catch (e) {
-                                                            console.error(
-                                                                'onEditLocal handler failed',
-                                                                e
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                                window.alert(
-                                                    '수정할 식당 정보가 없습니다.'
-                                                );
-                                            }}
-                                        >
-                                            수정하기
-                                        </Button>
-
-                                        <Button
-                                            className="cursor-pointer"
-                                            variant="destructive"
-                                            onClick={handleDelete}
-                                            disabled={loading}
-                                        >
-                                            삭제
-                                        </Button>
-                                    </>
-                                ) : null}
-
-                                <Button
-                                    className="cursor-pointer"
-                                    variant="outline"
-                                    onClick={() => {
-                                        (async () => {
-                                            try {
-                                                const id = (restaurant as any)
-                                                    .id;
-                                                // if restaurant already has positive server id, navigate
-                                                if (id && Number(id) > 0) {
-                                                    const payload = {
-                                                        id: id,
-                                                        name: restaurant.name,
-                                                        roadAddress: (
-                                                            restaurant as any
-                                                        ).roadAddress,
-                                                        jibunAddress: (
-                                                            restaurant as any
-                                                        ).jibunAddress,
-                                                        image: (
-                                                            restaurant as any
-                                                        ).image,
-                                                        phone: (
-                                                            restaurant as any
-                                                        ).phone,
-                                                        averageRating: (
-                                                            restaurant as any
-                                                        ).averageRating,
-                                                        reviewCount: (
-                                                            restaurant as any
-                                                        ).reviewCount,
-                                                        latitude: (
-                                                            restaurant as any
-                                                        ).latitude,
-                                                        longitude: (
-                                                            restaurant as any
-                                                        ).longitude,
-                                                        placeUrl: (
-                                                            restaurant as any
-                                                        ).placeUrl,
-                                                    };
-                                                    try {
-                                                        sessionStorage.setItem(
-                                                            'selectedRestaurant',
-                                                            JSON.stringify(
-                                                                payload
-                                                            )
-                                                        );
-                                                    } catch (e) {
-                                                        console.error(
-                                                            'store selectedRestaurant',
-                                                            e
-                                                        );
-                                                    }
-                                                    router.push(
-                                                        `/restaurants/${id}/reviews`
-                                                    );
-                                                    onOpenChange(false);
-                                                    return;
-                                                }
-
-                                                // otherwise, create a backend restaurant entry first
-                                                const createPayload = {
-                                                    name: restaurant.name ?? '',
-                                                    jibunAddress:
-                                                        (restaurant as any)
-                                                            .jibunAddress ?? '',
-                                                    roadAddress:
-                                                        (restaurant as any)
-                                                            .roadAddress ?? '',
-                                                    phone:
-                                                        (restaurant as any)
-                                                            .phone ?? '',
-                                                    latitude:
-                                                        (restaurant as any)
-                                                            .latitude ??
-                                                        (restaurant as any)
-                                                            .lat ??
-                                                        0,
-                                                    longitude:
-                                                        (restaurant as any)
-                                                            .longitude ??
-                                                        (restaurant as any)
-                                                            .lng ??
-                                                        0,
-                                                };
-
-                                                // If this item looks like a Kakao-imported place
-                                                // (has a placeUrl or placeId), ensure we create it
-                                                // with `asImported=true` so the backend does NOT
-                                                // assign the current user as owner.
-                                                const looksLikeKakao = Boolean(
-                                                    (restaurant as any)
-                                                        .placeUrl ||
-                                                        (restaurant as any)
-                                                            .placeId
-                                                );
-
-                                                const created = looksLikeKakao
-                                                    ? await createRestaurantWithOpts(
-                                                          createPayload,
-                                                          { asImported: true }
-                                                      )
-                                                    : await createRestaurant(
-                                                          createPayload
-                                                      );
-                                                try {
-                                                    const payload = {
-                                                        id: created.id,
-                                                        name: created.name,
-                                                        roadAddress:
-                                                            created.roadAddress,
-                                                        jibunAddress:
-                                                            created.jibunAddress,
-                                                        image: created.image,
-                                                        phone: created.phone,
-                                                        averageRating:
-                                                            created.averageRating,
-                                                        reviewCount:
-                                                            created.reviewCount,
-                                                        latitude:
-                                                            created.latitude,
-                                                        longitude:
-                                                            created.longitude,
-                                                        placeUrl:
-                                                            (created as any)
-                                                                .placeUrl ||
-                                                            (restaurant as any)
-                                                                .placeUrl,
-                                                    };
-                                                    sessionStorage.setItem(
-                                                        'selectedRestaurant',
-                                                        JSON.stringify(payload)
-                                                    );
-                                                } catch (e) {
-                                                    console.error(
-                                                        'store selectedRestaurant after create',
-                                                        e
-                                                    );
-                                                }
-                                                router.push(
-                                                    `/restaurants/${created.id}/reviews`
-                                                );
-                                                onOpenChange(false);
-                                            } catch (e: any) {
-                                                console.error(
-                                                    'review nav/create',
-                                                    e
-                                                );
-                                                const msg =
-                                                    e && e.message
-                                                        ? String(e.message)
-                                                        : '리뷰 페이지로 이동할 수 없습니다.';
-                                                window.alert(
-                                                    `리뷰 등록 중 오류: ${msg}`
-                                                );
-                                            }
-                                        })();
-                                    }}
-                                >
-                                    리뷰보기
-                                </Button>
-
-                                <Button
-                                    className="cursor-pointer"
-                                    variant="outline"
-                                    onClick={() => onOpenChange(false)}
-                                >
-                                    닫기
-                                </Button>
-                            </>
-                        ) : (
-                            // Non-local: original actions
-                            <>
-                                {/* 카카오 링크는 상단에서 non-local일 때만 표시합니다 (중복 방지) */}
-
-                                <Button
-                                    className="cursor-pointer"
-                                    variant="outline"
-                                    onClick={() => {
-                                        (async () => {
-                                            try {
-                                                const id = (restaurant as any)
-                                                    .id;
-                                                if (id && Number(id) > 0) {
-                                                    const payload = {
-                                                        id: id,
-                                                        name: restaurant.name,
-                                                        roadAddress: (
-                                                            restaurant as any
-                                                        ).roadAddress,
-                                                        jibunAddress: (
-                                                            restaurant as any
-                                                        ).jibunAddress,
-                                                        image: (
-                                                            restaurant as any
-                                                        ).image,
-                                                        phone: (
-                                                            restaurant as any
-                                                        ).phone,
-                                                        averageRating: (
-                                                            restaurant as any
-                                                        ).averageRating,
-                                                        reviewCount: (
-                                                            restaurant as any
-                                                        ).reviewCount,
-                                                        latitude: (
-                                                            restaurant as any
-                                                        ).latitude,
-                                                        longitude: (
-                                                            restaurant as any
-                                                        ).longitude,
-                                                        placeUrl: (
-                                                            restaurant as any
-                                                        ).placeUrl,
-                                                    };
-                                                    try {
-                                                        sessionStorage.setItem(
-                                                            'selectedRestaurant',
-                                                            JSON.stringify(
-                                                                payload
-                                                            )
-                                                        );
-                                                    } catch (e) {
-                                                        console.error(
-                                                            'store selectedRestaurant',
-                                                            e
-                                                        );
-                                                    }
-                                                    router.push(
-                                                        `/restaurants/${id}/reviews`
-                                                    );
-                                                    onOpenChange(false);
-                                                    return;
-                                                }
-
-                                                // create backend entry for kakao-sourced item then navigate
-                                                const createPayload = {
-                                                    name: restaurant.name ?? '',
-                                                    jibunAddress:
-                                                        (restaurant as any)
-                                                            .jibunAddress ?? '',
-                                                    roadAddress:
-                                                        (restaurant as any)
-                                                            .roadAddress ?? '',
-                                                    phone:
-                                                        (restaurant as any)
-                                                            .phone ?? '',
-                                                    latitude:
-                                                        (restaurant as any)
-                                                            .latitude ??
-                                                        (restaurant as any)
-                                                            .lat ??
-                                                        0,
-                                                    longitude:
-                                                        (restaurant as any)
-                                                            .longitude ??
-                                                        (restaurant as any)
-                                                            .lng ??
-                                                        0,
-                                                };
-                                                const created =
-                                                    await createRestaurantWithOpts(
-                                                        createPayload,
-                                                        { asImported: true }
-                                                    );
-                                                try {
-                                                    const payload = {
-                                                        id: created.id,
-                                                        name: created.name,
-                                                        roadAddress:
-                                                            created.roadAddress,
-                                                        jibunAddress:
-                                                            created.jibunAddress,
-                                                        image: created.image,
-                                                        phone: created.phone,
-                                                        averageRating:
-                                                            created.averageRating,
-                                                        reviewCount:
-                                                            created.reviewCount,
-                                                        latitude:
-                                                            created.latitude,
-                                                        longitude:
-                                                            created.longitude,
-                                                        placeUrl:
-                                                            (created as any)
-                                                                .placeUrl ||
-                                                            (restaurant as any)
-                                                                .placeUrl,
-                                                    };
-                                                    sessionStorage.setItem(
-                                                        'selectedRestaurant',
-                                                        JSON.stringify(payload)
-                                                    );
-                                                } catch (e) {
-                                                    console.error(
-                                                        'store selectedRestaurant after create',
-                                                        e
-                                                    );
-                                                }
-                                                router.push(
-                                                    `/restaurants/${created.id}/reviews`
-                                                );
-                                                onOpenChange(false);
-                                            } catch (e: any) {
-                                                console.error(
-                                                    'review nav/create',
-                                                    e
-                                                );
-                                                const msg =
-                                                    e && e.message
-                                                        ? String(e.message)
-                                                        : '리뷰 페이지로 이동할 수 없습니다.';
-                                                window.alert(
-                                                    `리뷰 등록 중 오류: ${msg}`
-                                                );
-                                            }
-                                        })();
-                                    }}
-                                >
-                                    리뷰보기
-                                </Button>
-
-                                <Button
-                                    className="cursor-pointer"
-                                    variant="outline"
-                                    onClick={() => onOpenChange(false)}
-                                >
-                                    닫기
-                                </Button>
-                            </>
-                        )}
-                    </div>
+                    <RestaurantDetailActions
+                        restaurant={restaurant as Restaurant}
+                        placeUrl={placeUrl}
+                        effectiveIsLocal={effectiveIsLocal}
+                        isOwner={isOwner}
+                        isLogin={isLogin}
+                        loading={loading}
+                        onOpenChange={onOpenChange}
+                        onEditLocal={onEditLocal}
+                        handleDelete={handleDelete}
+                        handleOpenReviews={handleOpenReviews}
+                    />
                 </DialogFooter>
             </DialogContent>
         </Dialog>

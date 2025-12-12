@@ -51,16 +51,28 @@ export function useRestaurants(
         async (kw = keyword, p = page) => {
             const json = await fetchRestaurants({ keyword: kw, page: p, size });
             const rawList = Array.isArray(json) ? json : [];
+            let kakaoImportedIds: number[] = [];
+            try {
+                const stored = JSON.parse(
+                    sessionStorage.getItem('kakaoImportedRestaurants') || '[]'
+                );
+                if (Array.isArray(stored)) {
+                    kakaoImportedIds = stored.map((v: any) => Number(v));
+                }
+            } catch (e) {
+                kakaoImportedIds = [];
+            }
             const list = (rawList as Restaurant[]).filter((r: any) => {
-                const ownerId = r?.ownerId ?? r?.memberId ?? null;
-                if (!ownerId) return true;
+                const looksLikeKakao = Boolean(
+                    (r as any)?.placeUrl || (r as any)?.placeId
+                );
+                if (looksLikeKakao) return false;
                 if (
-                    isLogin &&
-                    loginMember &&
-                    Number(ownerId) === Number(loginMember.id)
+                    (r as any)?.id &&
+                    kakaoImportedIds.includes(Number((r as any).id))
                 )
-                    return true;
-                return false;
+                    return false;
+                return true;
             });
 
             const ref = userPos ?? mapCenter;
@@ -68,6 +80,7 @@ export function useRestaurants(
             if (isLogin && localAdded && localAdded.length) {
                 const existingIds = new Set(merged.map((r) => (r as any).id));
                 for (const la of localAdded) {
+                    if (!((la as any).isLocal === true)) continue;
                     const ownerId =
                         (la as any).ownerId ?? (la as any).memberId ?? null;
                     if (
@@ -174,17 +187,42 @@ export function useRestaurants(
                     const existingIds = new Set(
                         merged.map((r) => (r as any).id)
                     );
-                    for (const la of localAdded) {
-                        const ownerId =
-                            (la as any).ownerId ?? (la as any).memberId ?? null;
-                        if (
-                            loginMember &&
-                            ownerId &&
-                            Number(ownerId) === Number(loginMember.id)
-                        ) {
-                            if (!existingIds.has((la as any).id))
-                                merged.unshift(la);
-                        }
+                    const maxDistanceMeters = 2000;
+                    const mine = (localAdded || [])
+                        .filter((la) => {
+                            const ownerId =
+                                (la as any).ownerId ??
+                                (la as any).memberId ??
+                                null;
+                            return (
+                                loginMember &&
+                                ownerId &&
+                                Number(ownerId) === Number(loginMember.id)
+                            );
+                        })
+                        .map((la) => {
+                            const lat = (la as any).latitude ?? (la as any).lat;
+                            const lng =
+                                (la as any).longitude ?? (la as any).lng;
+                            return {
+                                ...la,
+                                isLocal: true,
+                                distanceMeters: distanceMeters(
+                                    target.lat,
+                                    target.lng,
+                                    Number(lat),
+                                    Number(lng)
+                                ),
+                            } as Restaurant & { distanceMeters?: number };
+                        })
+                        .filter(
+                            (it) =>
+                                Number(it.distanceMeters) <= maxDistanceMeters
+                        );
+
+                    for (const la of mine) {
+                        if (!existingIds.has((la as any).id))
+                            merged.unshift(la);
                     }
                 }
                 merged.forEach((r) => {
@@ -225,17 +263,40 @@ export function useRestaurants(
                     ];
 
                     if (isLogin && localAdded && localAdded.length) {
-                        const mine = localAdded.filter((la) => {
-                            const ownerId =
-                                (la as any).ownerId ??
-                                (la as any).memberId ??
-                                null;
-                            return (
-                                loginMember &&
-                                ownerId &&
-                                Number(ownerId) === Number(loginMember.id)
+                        const maxDistanceMeters = 2000;
+                        const mine = (localAdded || [])
+                            .filter((la) => {
+                                const ownerId =
+                                    (la as any).ownerId ??
+                                    (la as any).memberId ??
+                                    null;
+                                return (
+                                    loginMember &&
+                                    ownerId &&
+                                    Number(ownerId) === Number(loginMember.id)
+                                );
+                            })
+                            .map((la) => {
+                                const lat =
+                                    (la as any).latitude ?? (la as any).lat;
+                                const lng =
+                                    (la as any).longitude ?? (la as any).lng;
+                                return {
+                                    ...la,
+                                    distanceMeters: distanceMeters(
+                                        target.lat,
+                                        target.lng,
+                                        Number(lat),
+                                        Number(lng)
+                                    ),
+                                } as Restaurant & { distanceMeters?: number };
+                            })
+                            .filter(
+                                (it) =>
+                                    Number(it.distanceMeters) <=
+                                    maxDistanceMeters
                             );
-                        });
+
                         if (mine.length) {
                             return [
                                 ...baseList,
@@ -411,7 +472,12 @@ export function useRestaurants(
                                                     (la as any).longitude ??
                                                         (la as any).lng
                                                 ),
-                                            }));
+                                            }))
+                                            .filter(
+                                                (it) =>
+                                                    Number(it.distanceMeters) <=
+                                                    Math.max(0, radiusMeters)
+                                            );
 
                                         const keyed = new Map<string, any>();
                                         const keyOf = (it: any) =>
@@ -446,6 +512,11 @@ export function useRestaurants(
                                 console.debug(
                                     '[useRestaurants] kakaoSearchNearby set results',
                                     { count: mergedResults.length }
+                                );
+                                mergedResults.sort(
+                                    (a: any, b: any) =>
+                                        (a.distanceMeters ?? 0) -
+                                        (b.distanceMeters ?? 0)
                                 );
                                 setNearbyUsingKakao(true);
                                 setAllResults(mergedResults);
@@ -647,6 +718,7 @@ export function useRestaurants(
                 );
                 return;
             }
+            console.debug('[useRestaurants] addLocalRestaurant called', r);
             const ref = userPos ?? mapCenter;
             const lat = (r as any).latitude ?? (r as any).lat;
             const lng = (r as any).longitude ?? (r as any).lng;
@@ -659,8 +731,13 @@ export function useRestaurants(
                 ownerId: (r as any).ownerId ?? loginMember?.id ?? null,
             } as Restaurant & { distanceMeters?: number };
             const isServerCreated = Number((r as any).id) > 0;
+            console.debug(
+                '[useRestaurants] addLocalRestaurant isServerCreated=',
+                isServerCreated
+            );
 
             const reconcile = (created: Restaurant) => {
+                console.debug('[useRestaurants] reconcile created', created);
                 const createdLat =
                     (created as any).latitude ?? (created as any).lat;
                 const createdLng =
@@ -1068,12 +1145,20 @@ export function useRestaurants(
     useEffect(() => {
         if (!isLogin) {
             setLocalAdded([]);
-            loadRestaurants().catch(console.error);
+            setIsNearby(true);
+            loadNearbyRestaurants(1, mapCenter).catch(console.error);
         }
     }, [isLogin]);
 
     useEffect(() => {
-        loadRestaurants().catch(console.error);
+        setIsNearby(true);
+        loadNearbyRestaurants().catch((e) => {
+            console.error(
+                'initial nearby load failed, falling back to full list',
+                e
+            );
+            loadRestaurants().catch(console.error);
+        });
     }, []);
 
     return {

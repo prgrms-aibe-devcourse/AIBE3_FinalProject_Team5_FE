@@ -3,8 +3,9 @@
 import type React from "react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,67 +19,108 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { ImagePlus, X } from "lucide-react";
-import { createPost } from "@/app/api/post/postwriteapi";
 
-export default function WritePostPage() {
-  const isAdmin = true; // 임시로 정보게시판에 사용 할 관리자 권한 부여
+import { getPostDetail, updatePost } from "@/app/api/post/postapi";
+import type {
+  PostResponse,
+  PostRequestDto,
+} from "@/app/onelife/types/postResponse";
+
+export default function EditPostPage({ id }: { id: string }) {
   const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [post, setPost] = useState<PostResponse | null>(null);
+
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("꿀팁");
   const [tags, setTags] = useState("");
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
 
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const data = await getPostDetail(id);
+        setPost(data);
+        setTitle(data.title);
+        setContent(data.content);
+
+        const mappedCategory =
+          data.postType === "TIP"
+            ? "꿀팁"
+            : data.postType === "FREE"
+            ? "자유"
+            : "정보";
+
+        setCategory(mappedCategory);
+
+        setTags(data.tags?.join(", ") ?? "");
+
+        if (data.attachmentPath) {
+          setImages([data.attachmentPath]);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("게시글을 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [id]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
-      const newImages: string[] = [];
-      Array.from(files).forEach((file) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            setImages([...images, ...newImages]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-    }
+    if (!files) return;
+
+    const newImages: string[] = [];
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        newImages.push(reader.result as string);
+
+        if (newImages.length === files.length) {
+          setImages((prev) => [...prev, ...newImages]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const removeImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index));
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!post) return;
+
+    const dto: PostRequestDto = {
+      title,
+      content,
+      attachmentPath: images[0] || post.attachmentPath || "",
+      postType:
+        category === "꿀팁" ? "TIP" : category === "자유" ? "FREE" : "INFO",
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    };
 
     try {
-      const dto = {
-        title,
-        content,
-        attachmentPath: images[0] || "",
-        postType:
-          category === "꿀팁"
-            ? "TIP"
-            : category === "자유"
-            ? "FREE"
-            : category === "정보"
-            ? "INFO"
-            : "ALL",
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      };
-      await createPost(dto);
-
-      router.push("/onelife");
-    } catch (err) {
-      console.error(err);
-      alert("게시글 작성 중 오류가 발생했습니다.");
+      await updatePost(id, dto);
+      alert("게시글이 수정되었습니다!");
+      router.push(`/onelife/post/${id}`);
+    } catch (err: any) {
+      console.error("수정 실패:", err);
+      alert("수정 중 오류 발생");
     }
   };
+
+  if (loading) return <div className="text-center py-20">불러오는 중...</div>;
+  if (!post) return <div>게시글을 찾을 수 없습니다.</div>;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -87,10 +129,12 @@ export default function WritePostPage() {
         <div className="max-w-3xl mx-auto">
           <Card>
             <CardHeader className="p-6">
-              <CardTitle className="text-2xl">혼라이프 글쓰기</CardTitle>
+              <CardTitle className="text-2xl">게시글 수정</CardTitle>
             </CardHeader>
+
             <CardContent className="p-6">
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* 제목 */}
                 <div>
                   <label className="block mb-2 text-sm font-medium">제목</label>
                   <Input
@@ -100,11 +144,13 @@ export default function WritePostPage() {
                   />
                 </div>
 
+                {/* 카테고리 + 태그 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block mb-2 text-sm font-medium">
                       카테고리
                     </label>
+
                     <Select
                       value={category}
                       onValueChange={(v) => setCategory(v)}
@@ -112,12 +158,11 @@ export default function WritePostPage() {
                       <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
+
                       <SelectContent>
                         <SelectItem value="꿀팁">꿀팁</SelectItem>
                         <SelectItem value="자유">자유</SelectItem>
-                        {isAdmin && (
-                          <SelectItem value="정보">정보 게시판</SelectItem>
-                        )}
+                        <SelectItem value="정보">정보</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -129,11 +174,12 @@ export default function WritePostPage() {
                     <Input
                       value={tags}
                       onChange={(e) => setTags(e.target.value)}
-                      placeholder="#절약, #요리"
+                      placeholder="#요리, #세탁"
                     />
                   </div>
                 </div>
 
+                {/* 내용 */}
                 <div>
                   <label className="block mb-2 text-sm font-medium">내용</label>
                   <Textarea
@@ -144,7 +190,7 @@ export default function WritePostPage() {
                   />
                 </div>
 
-                {/* Image Upload */}
+                {/* 이미지 */}
                 <div className="space-y-2">
                   <Label>대표 사진 (선택)</Label>
                   <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
@@ -161,19 +207,15 @@ export default function WritePostPage() {
                       <p className="text-sm text-muted-foreground">
                         클릭하여 사진을 업로드하세요
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        소모임을 대표할 수 있는 사진을 추가해보세요
-                      </p>
                     </label>
                   </div>
 
-                  {/* Image Preview Grid */}
                   {images.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
                       {images.map((image, index) => (
                         <div key={index} className="relative group">
                           <img
-                            src={image || "/placeholder.svg"}
+                            src={image}
                             alt={`Upload ${index + 1}`}
                             className="w-full h-32 object-cover rounded-lg"
                           />
@@ -190,15 +232,16 @@ export default function WritePostPage() {
                   )}
                 </div>
 
+                {/* 버튼 */}
                 <div className="flex items-center justify-end gap-3">
                   <Button
                     variant="ghost"
                     type="button"
-                    onClick={() => router.push("/onelife")}
+                    onClick={() => router.push(`/onelife/post/${id}`)}
                   >
                     취소
                   </Button>
-                  <Button type="submit">저장</Button>
+                  <Button type="submit">저장하기</Button>
                 </div>
               </form>
             </CardContent>

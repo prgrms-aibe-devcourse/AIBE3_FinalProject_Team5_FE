@@ -10,6 +10,8 @@ import {
   fetchChatMessages,
   leaveChatRoom,
   fetchChatParticipants,
+  kickParticipant,
+  transferCreator,
   ChatParticipant,
 } from "@/lib/api/chatApi";
 import { MessageType } from "@/types/chat";
@@ -20,7 +22,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft,
   Users,
@@ -28,6 +29,8 @@ import {
   Calendar,
   Send,
   MoreVertical,
+  UserX,
+  Crown, // ✅ 추가 (권한 이양 아이콘)
 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -48,6 +51,8 @@ export default function GroupChatPage({
   const [participants, setParticipants] = useState<ChatParticipant[]>([]);
   const isInitialized = useRef(false);
 
+  const [showTransferModal, setShowTransferModal] = useState(false);
+
   const chatRoomId = Number(id);
 
   const {
@@ -55,11 +60,9 @@ export default function GroupChatPage({
     setCurrentChatRoom,
     messages,
     addMessage,
-    setMessages,
     clearMessages,
   } = useChatStore();
 
-  // 로그인 체크
   useEffect(() => {
     if (!isLogin || !loginMember) {
       alert("로그인이 필요한 기능입니다.");
@@ -68,7 +71,6 @@ export default function GroupChatPage({
     }
   }, [isLogin, loginMember, router]);
 
-  // 채팅방 데이터 로드
   useEffect(() => {
     if (!isLogin || !loginMember || isInitialized.current) {
       return;
@@ -79,7 +81,6 @@ export default function GroupChatPage({
 
     loadChatRoomData();
 
-    // 클린업 함수
     return () => {
       console.log("채팅방 클린업");
       if (wsClient.current) {
@@ -91,7 +92,6 @@ export default function GroupChatPage({
     };
   }, [chatRoomId, isLogin, loginMember]);
 
-  // 자동 스크롤 - 채팅 컨테이너만 스크롤
   useEffect(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop =
@@ -99,101 +99,71 @@ export default function GroupChatPage({
     }
   }, [messages]);
 
-  // 쿠키 기반 - 채팅방 데이터 로드
   const loadChatRoomData = async () => {
     try {
-      console.log("📡 채팅방 데이터 로드 시작:", chatRoomId);
-
-      // 1. 채팅방 정보 조회
       const room = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(room);
-      console.log("채팅방 정보:", room);
 
-      // 2. 이전 메시지 불러오기
-      const previousMessages = await fetchChatMessages(chatRoomId);
-      console.log("이전 메시지:", previousMessages.length, "개");
-
-      // clearMessages 후 새로운 메시지 설정
+      const messageHistory = await fetchChatMessages(chatRoomId, 50);
       clearMessages();
-      previousMessages.forEach((msg) => addMessage(msg));
+      messageHistory.forEach((msg) => addMessage(msg));
 
-      // 3. 참여자 목록 불러오기
-      try {
-        const participantsList = await fetchChatParticipants(chatRoomId);
-        setParticipants(participantsList);
-        console.log("참여자 목록 로드:", participantsList);
-      } catch (error) {
-        console.error("참여자 목록 로드 실패:", error);
-      }
+      const participantsData = await fetchChatParticipants(chatRoomId);
+      setParticipants(participantsData);
 
-      // 4. WebSocket 연결
-      if (wsClient.current) {
-        wsClient.current.disconnect();
+      if (!wsClient.current && loginMember) {
+        wsClient.current = new ChatWebSocketClient(
+          loginMember.id,
+          loginMember.nickname
+        );
+
+        wsClient.current.connect(
+          chatRoomId,
+          (newMessage) => {
+            console.log("새 메시지 수신:", newMessage);
+            addMessage(newMessage);
+
+            // KICK 또는 TRANSFER 메시지 수신 시 참여자 목록 갱신
+            const msgType = String(newMessage.type);
+            if (
+              msgType === "KICK" ||
+              msgType === "ENTER" ||
+              msgType === "LEAVE" ||
+              msgType === "TRANSFER"
+            ) {
+              setTimeout(async () => {
+                const updatedParticipants = await fetchChatParticipants(
+                  chatRoomId
+                );
+                setParticipants(updatedParticipants);
+              }, 100);
+            }
+          },
+          () => {
+            console.log("WebSocket 연결 완료 콜백");
+            setIsConnected(true);
+          }
+        );
       }
-      connectWebSocket();
-    } catch (error) {
+    } catch (error: any) {
       console.error("채팅방 데이터 로드 실패:", error);
-      alert("채팅방을 불러오는데 실패했습니다.");
-      router.push("/groups");
-    }
-  };
 
-  const connectWebSocket = () => {
-    if (!loginMember) return;
-
-    console.log("WebSocket 연결 시작");
-    wsClient.current = new ChatWebSocketClient(
-      loginMember.id,
-      loginMember.nickname
-    );
-
-    wsClient.current.connect(
-      chatRoomId,
-      (msg) => {
-        console.log("새 메시지:", msg);
-        addMessage(msg);
-
-        // 입장/퇴장 메시지 시 참여자 목록 + 채팅방 정보 실시간 갱신
-        if (msg.type === MessageType.ENTER || msg.type === MessageType.LEAVE) {
-          console.log("참여자 변동 감지 - 목록 갱신 중...");
-
-          // 쿠키 기반 - 참여자 목록 갱신
-          fetchChatParticipants(chatRoomId)
-            .then((list) => {
-              setParticipants(list);
-              console.log("✅ 참여자 목록 갱신 완료:", list);
-            })
-            .catch((error) =>
-              console.error("❌ 참여자 목록 갱신 실패:", error)
-            );
-
-          // 쿠키 기반 - 채팅방 정보 갱신
-          fetchChatRoom(chatRoomId)
-            .then((updatedRoom) => {
-              setCurrentChatRoom(updatedRoom);
-              console.log("✅ 채팅방 정보 갱신 완료:", updatedRoom);
-            })
-            .catch((error) =>
-              console.error("❌ 채팅방 정보 갱신 실패:", error)
-            );
-        }
-      },
-      () => {
-        setIsConnected(true);
-        console.log("✅ WebSocket 연결 완료");
+      if (error.message?.includes("존재하지 않는") || error.status === 404) {
+        alert("채팅방을 찾을 수 없습니다.");
+        router.push("/groups");
+      } else {
+        alert("채팅방 정보를 불러올 수 없습니다.");
       }
-    );
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!message.trim()) {
-      return;
-    }
+    if (!message.trim()) return;
 
     if (!wsClient.current || !wsClient.current.isConnected()) {
-      alert("채팅 서버에 연결 중입니다. 잠시 후 다시 시도해주세요.");
+      alert("채팅 서버에 연결 중입니다.");
       return;
     }
 
@@ -206,7 +176,55 @@ export default function GroupChatPage({
     setMessage("");
   };
 
-  // 쿠키 기반 - 나가기
+  // 참여자 강퇴
+  const handleKickParticipant = async (
+    targetMemberId: number,
+    nickname: string
+  ) => {
+    if (!loginMember || !currentChatRoom) return;
+
+    if (loginMember.id !== currentChatRoom.creatorId) {
+      alert("방장만 참여자를 강퇴할 수 있습니다.");
+      return;
+    }
+
+    if (!confirm(`${nickname}님을 강퇴하시겠습니까?`)) return;
+
+    try {
+      console.log("🚫 강퇴 시작:", nickname, targetMemberId);
+      await kickParticipant(chatRoomId, targetMemberId);
+      console.log("✅ 강퇴 API 성공");
+    } catch (error: any) {
+      console.error("❌ 강퇴 실패:", error);
+      alert(error.message || "강퇴에 실패했습니다.");
+    }
+  };
+
+  // 권한 이양 핸들러 추가
+  const handleTransferClick = () => {
+    setShowTransferModal(true);
+  };
+
+  const handleTransfer = async (targetMemberId: number) => {
+    try {
+      await transferCreator(chatRoomId, targetMemberId);
+      alert("방장 권한을 이양했습니다.");
+      setShowTransferModal(false);
+
+      // 참여자 목록 새로고침
+      const updatedParticipants = await fetchChatParticipants(chatRoomId);
+      setParticipants(updatedParticipants);
+
+      // 채팅방 정보 새로고침 (creatorId 업데이트)
+      const updatedRoom = await fetchChatRoom(chatRoomId);
+      setCurrentChatRoom(updatedRoom);
+    } catch (error: any) {
+      console.error("권한 이양 실패:", error);
+      alert(error.message || "권한 이양에 실패했습니다.");
+    }
+  };
+
+  // 나가기 메시지 변경
   const handleLeave = async () => {
     if (!currentChatRoom) return;
 
@@ -216,8 +234,11 @@ export default function GroupChatPage({
     let confirmMessage = "소모임을 나가시겠습니까?";
 
     if (isCreator && hasOtherParticipants) {
+      // 권한 이양 안내
       confirmMessage =
-        "방장 권한이 다음 참여자에게 자동으로 이양됩니다.\n소모임을 나가시겠습니까?";
+        "방장은 다른 참여자에게 권한을 이양한 후 나갈 수 있습니다.\n'방장 권한 이양' 버튼을 눌러주세요.";
+      alert(confirmMessage);
+      return; // 나가기 차단
     } else if (isCreator && !hasOtherParticipants) {
       confirmMessage =
         "마지막 참여자이므로 채팅방이 삭제됩니다.\n소모임을 나가시겠습니까?";
@@ -226,31 +247,19 @@ export default function GroupChatPage({
     if (!confirm(confirmMessage)) return;
 
     try {
-      console.log("🚪 채팅방 나가기 시작...");
-
-      // 1. WebSocket 연결 해제
       if (wsClient.current) {
         wsClient.current.disconnect();
-        console.log("✅ WebSocket 연결 해제");
       }
 
-      // 2. 백엔드 API 호출 (쿠키 기반)
       await leaveChatRoom(chatRoomId);
-      console.log("✅ 백엔드 퇴장 처리 완료");
-
-      // 3. 상태 초기화
       clearMessages();
       setCurrentChatRoom(null);
-
-      // 4. 목록 페이지로 이동
       router.push("/groups");
       router.refresh();
-      console.log("✅ 채팅방 나가기 완료");
     } catch (error: any) {
       console.error("❌ 나가기 실패:", error);
 
       if (error.message?.includes("존재하지 않는") || error.status === 404) {
-        console.log("ℹ️ 채팅방이 이미 삭제되었습니다.");
         clearMessages();
         setCurrentChatRoom(null);
         router.push("/groups");
@@ -277,13 +286,14 @@ export default function GroupChatPage({
     );
   }
 
+  const isCreator = loginMember.id === currentChatRoom.creatorId;
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
       <main className="flex-1 py-4 md:py-8">
         <div className="container mx-auto px-4">
-          {/* Back Button */}
           <Link
             href="/groups"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
@@ -292,12 +302,10 @@ export default function GroupChatPage({
             소모임 목록으로 돌아가기
           </Link>
 
-          {/* 채팅 영역 */}
           <div className="grid lg:grid-cols-4 gap-4">
             {/* Chat Area */}
             <div className="lg:col-span-3">
               <Card className="flex flex-col h-[calc(100vh-250px)]">
-                {/* Header */}
                 <CardHeader className="border-b shrink-0">
                   <div className="flex items-center justify-between">
                     <div>
@@ -308,18 +316,25 @@ export default function GroupChatPage({
                         {currentChatRoom.description || "연결됨"}
                       </p>
                     </div>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                    {/* 방장 권한 이양 버튼 추가 */}
+                    {isCreator && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTransferClick}
+                        className="gap-2"
+                      >
+                        <Crown className="h-4 w-4" />
+                        권한 이양
+                      </Button>
+                    )}
                   </div>
                 </CardHeader>
 
-                {/* Messages */}
                 <CardContent
                   ref={messagesContainerRef}
                   className="flex-1 overflow-y-auto p-4 space-y-4"
                 >
-                  {/* 환영 메시지 */}
                   <div className="flex justify-center items-center py-8">
                     <div className="text-center space-y-3">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
@@ -348,7 +363,6 @@ export default function GroupChatPage({
                     </div>
                   </div>
 
-                  {/* 메시지 목록 */}
                   {messages.length === 0 ? (
                     <div className="flex justify-center items-center py-4">
                       <p className="text-sm text-muted-foreground">
@@ -357,7 +371,6 @@ export default function GroupChatPage({
                     </div>
                   ) : (
                     <>
-                      {/* 메시지를 시간순으로 정렬 (오래된 것 위 → 최신 것 아래) */}
                       {[...messages]
                         .sort(
                           (a, b) =>
@@ -368,9 +381,15 @@ export default function GroupChatPage({
                           const isMyMessage = loginMember
                             ? msg.senderId === loginMember.id
                             : false;
+
+                          // 문자열로 비교
+                          const msgType = String(msg.type);
+                          // TRANSFER 추가
                           const isSystemMessage =
-                            msg.type === MessageType.ENTER ||
-                            msg.type === MessageType.LEAVE;
+                            msgType === "ENTER" ||
+                            msgType === "LEAVE" ||
+                            msgType === "KICK" ||
+                            msgType === "TRANSFER";
 
                           const uniqueKey = msg.id
                             ? `msg-${msg.id}`
@@ -378,21 +397,28 @@ export default function GroupChatPage({
                                 msg.createdAt
                               }-${msg.content.substring(0, 10)}`;
 
-                          // 시스템 메시지
                           if (isSystemMessage) {
                             return (
                               <div
                                 key={uniqueKey}
                                 className="flex justify-center"
                               >
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge
+                                  variant={
+                                    msgType === "KICK"
+                                      ? "destructive"
+                                      : msgType === "TRANSFER"
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="text-xs"
+                                >
                                   {msg.content}
                                 </Badge>
                               </div>
                             );
                           }
 
-                          // 일반 메시지
                           return (
                             <div
                               key={uniqueKey}
@@ -431,7 +457,7 @@ export default function GroupChatPage({
                                   </p>
                                 </div>
                                 <span className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(msg.createdAt), "a h:mm", {
+                                  {format(new Date(msg.createdAt), "HH:mm", {
                                     locale: ko,
                                   })}
                                 </span>
@@ -443,36 +469,25 @@ export default function GroupChatPage({
                   )}
                 </CardContent>
 
-                {/* Input */}
                 <div className="border-t p-4 shrink-0">
                   <form onSubmit={handleSendMessage} className="flex gap-2">
                     <Input
+                      type="text"
+                      placeholder="메시지를 입력하세요..."
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="메시지를 입력하세요..."
                       className="flex-1"
-                      disabled={!isConnected}
                     />
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={!isConnected || !message.trim()}
-                    >
+                    <Button type="submit" size="icon">
                       <Send className="h-4 w-4" />
                     </Button>
                   </form>
-                  {!isConnected && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      서버에 연결 중...
-                    </p>
-                  )}
                 </div>
               </Card>
             </div>
 
             {/* Sidebar */}
-            <div className="lg:col-span-1 space-y-4">
-              {/* Room Info */}
+            <div className="space-y-4">
               <Card>
                 <CardHeader>
                   <h3 className="font-semibold">소모임 정보</h3>
@@ -513,7 +528,6 @@ export default function GroupChatPage({
                 </CardContent>
               </Card>
 
-              {/* Participants */}
               <Card>
                 <CardHeader>
                   <h3 className="font-semibold">
@@ -527,7 +541,6 @@ export default function GroupChatPage({
                     </p>
                   ) : (
                     participants.map((participant) => {
-                      // ✅ null 체크 추가
                       const isMe = loginMember
                         ? participant.memberId === loginMember.id
                         : false;
@@ -558,6 +571,23 @@ export default function GroupChatPage({
                               )}
                             </div>
                           </div>
+                          {/* 강퇴 버튼 */}
+                          {isCreator && !isMe && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() =>
+                                handleKickParticipant(
+                                  participant.memberId,
+                                  participant.nickname
+                                )
+                              }
+                              title="강퇴"
+                            >
+                              <UserX className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       );
                     })
@@ -565,7 +595,6 @@ export default function GroupChatPage({
                 </CardContent>
               </Card>
 
-              {/* Leave Button */}
               <Button
                 variant="outline"
                 className="w-full"
@@ -579,6 +608,57 @@ export default function GroupChatPage({
       </main>
 
       <Footer />
+
+      {/* 권한 이양 모달 추가 */}
+      {showTransferModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowTransferModal(false)}
+        >
+          <Card
+            className="w-96 max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader>
+              <h3 className="text-xl font-bold">방장 권한 이양</h3>
+              <p className="text-sm text-muted-foreground">
+                새로운 방장을 선택하세요
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {participants
+                  .filter((p) => !p.isCreator) // 자기 자신 제외
+                  .map((participant) => (
+                    <button
+                      key={participant.memberId}
+                      onClick={() => handleTransfer(participant.memberId)}
+                      className="w-full text-left p-3 hover:bg-accent rounded-lg border transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">
+                            {participant.nickname[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">
+                          {participant.nickname}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => setShowTransferModal(false)}
+              >
+                취소
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

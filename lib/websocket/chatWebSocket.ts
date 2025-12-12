@@ -1,6 +1,7 @@
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import { ChatMessage, ChatMessageSendRequest, MessageType } from "@/types/chat";
+import Cookies from "js-cookie";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:8080/ws";
 
@@ -14,6 +15,7 @@ export class ChatWebSocketClient {
 
   /**
    * 생성자 - 사용자 정보를 받아서 저장
+   * (userId, userNickname은 유지하지만 WebSocket 인증에는 사용하지 않음)
    */
   constructor(userId: number, userNickname: string) {
     this.userId = userId;
@@ -32,13 +34,20 @@ export class ChatWebSocketClient {
 
     console.log("WebSocket 연결 시도 (SockJS):", WS_URL);
 
+    const token = Cookies.get("accessToken");
+
+    if (!token) {
+      console.error("❌ 인증 토큰이 없습니다. 로그인이 필요합니다.");
+      throw new Error("인증 토큰이 없습니다. 로그인이 필요합니다.");
+    }
+
     this.client = new Client({
       // SockJS 사용 (백엔드가 .withSockJS() 사용)
       webSocketFactory: () => new SockJS(WS_URL),
 
+      // JWT 토큰을 Authorization 헤더에 포함 (userId, nickname 대신)
       connectHeaders: {
-        userId: this.userId.toString(),
-        nickname: this.userNickname,
+        Authorization: `Bearer ${token}`,
       },
 
       debug: (str) => {
