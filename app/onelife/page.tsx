@@ -9,13 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import PaginatedPosts from "@/components/paginated-posts";
 import { getOneLifePosts } from "../api/post/postapi";
+import { useAuth } from "@/app/global/auth/useAuth";
+import type { PostResponse } from "../onelife/types/postResponse";
 
 export default function OneLifePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState<PostResponse[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-
+  const { isAdmin } = useAuth();
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -65,7 +67,18 @@ export default function OneLifePage() {
     { id: "TIP", label: "꿀팁", value: "tip" },
     { id: "INFO", label: "정보", value: "info" },
   ];
-
+  const displayedPosts = posts.filter((post) => {
+    if (selectedCategory === "hot") {
+      return post.isHot === true;
+    } else if (selectedCategory === "all") {
+      return true;
+    } else if (
+      selectedCategory.toLowerCase() === post.postType?.toLowerCase()
+    ) {
+      return true;
+    }
+    return false;
+  });
   return (
     <BoardLayout
       title="혼라이프"
@@ -110,6 +123,13 @@ export default function OneLifePage() {
                   <a href="/onelife/write">+ 글쓰기</a>
                 </Button>
               </div>
+              {selectedCategory === "info" && !isAdmin && (
+                <div className="mb-6 p-3 rounded-md bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-600 font-semibold">
+                    관리자만 작성 가능합니다.
+                  </p>
+                </div>
+              )}
               {loading ? (
                 <p className="text-center py-10">불러오는 중... </p>
               ) : (

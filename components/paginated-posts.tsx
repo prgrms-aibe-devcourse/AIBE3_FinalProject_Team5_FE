@@ -125,7 +125,7 @@ export default function PaginatedPosts({
                         {post.category !== "정보" && (
                           <div className="flex items-center gap-1">
                             <MessageCircle className="h-4 w-4" />
-                            <span>{post.comments}</span>
+                            <span>{post.commentCount}</span>
                           </div>
                         )}
                       </div>

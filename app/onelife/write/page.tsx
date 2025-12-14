@@ -19,10 +19,11 @@ import {
 } from "@/components/ui/select";
 import { ImagePlus, X } from "lucide-react";
 import { createPost } from "@/app/api/post/postwriteapi";
+import { useAuth } from "@/app/global/auth/useAuth";
 
 export default function WritePostPage() {
-  const isAdmin = true; // 임시로 정보게시판에 사용 할 관리자 권한 부여
   const router = useRouter();
+  const { isAdmin } = useAuth();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("꿀팁");
   const [tags, setTags] = useState("");
