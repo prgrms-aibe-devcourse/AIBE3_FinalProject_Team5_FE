@@ -14,34 +14,27 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import type { PostResponse } from "@/app/onelife/types/postResponse";
 
-type Post = any;
+interface PaginatedPostsProps {
+  posts: PostResponse[];
+  selectedCategory?: string;
+}
 
 export default function PaginatedPosts({
   posts,
   selectedCategory,
-}: {
-  posts: Post[];
-  selectedCategory?: string;
-}) {
+}: PaginatedPostsProps) {
   const perPage = 5;
   const [page, setPage] = useState(1);
-
-  const filtered =
-    !selectedCategory || selectedCategory === "all"
-      ? posts
-      : posts.filter((p: Post) => {
-          if (!selectedCategory || selectedCategory.toLowerCase() === "all") {
-            return true;
-          }
-          return p.postType?.toLowerCase() === selectedCategory.toLowerCase();
-        });
+  console.log(posts);
+  const filtered = posts;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-
   const start = (page - 1) * perPage;
   const visible = filtered.slice(start, start + perPage);
 
+  // 카테고리 변경 시 페이지 초기화
   useEffect(() => {
     setPage(1);
   }, [selectedCategory]);
@@ -71,10 +64,10 @@ export default function PaginatedPosts({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                        {post.category}
+                        {post.postType}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
-                        {post.time}
+                        {new Date(post.createdAt).toLocaleDateString()}
                       </span>
                     </div>
 
@@ -83,11 +76,13 @@ export default function PaginatedPosts({
                     </h3>
 
                     <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                      {post.excerpt}
+                      {post.content.length > 100
+                        ? post.content.slice(0, 100) + "..."
+                        : post.content}
                     </p>
 
                     <div className="flex flex-wrap gap-2 mb-4">
-                      {post.tags?.map((tag: string, index: number) => (
+                      {post.tags?.map((tag, index) => (
                         <span key={index} className="text-xs text-primary">
                           {tag}
                         </span>
@@ -97,11 +92,7 @@ export default function PaginatedPosts({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Image
-                          src={
-                            post.avatar ||
-                            "/placeholder.svg" ||
-                            "/placeholder.svg"
-                          }
+                          src="/placeholder.svg"
                           alt={post.memberNickname}
                           width={24}
                           height={24}
@@ -121,16 +112,16 @@ export default function PaginatedPosts({
                           <Heart className="h-4 w-4" />
                           <span>{post.likeCount}</span>
                         </div>
-                        {/* 댓글 기능은 '정보' 카테고리에서는 숨깁니다 */}
-                        {post.category !== "정보" && (
+                        {post.postType !== "INFO" && (
                           <div className="flex items-center gap-1">
                             <MessageCircle className="h-4 w-4" />
-                            <span>{post.commentCount}</span>
+                            <span>{post.commentCount ?? 0}</span>
                           </div>
                         )}
                       </div>
                     </div>
                   </div>
+
                   <div className="hidden sm:block w-40 h-32 flex-shrink-0">
                     <Image
                       src={post.imageUrls?.[0] || "/placeholder.svg"}
@@ -153,7 +144,6 @@ export default function PaginatedPosts({
           size="icon"
           onClick={() => goto(page - 1)}
           disabled={page === 1}
-          className="cursor-pointer"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -163,8 +153,8 @@ export default function PaginatedPosts({
             key={i}
             variant={page === i + 1 ? "default" : "ghost"}
             size="icon"
-            className={`${page === i + 1 ? "bg-primary" : ""} cursor-pointer`}
             onClick={() => goto(i + 1)}
+            className={page === i + 1 ? "bg-primary" : ""}
           >
             {i + 1}
           </Button>
@@ -175,7 +165,6 @@ export default function PaginatedPosts({
           size="icon"
           onClick={() => goto(page + 1)}
           disabled={page === totalPages}
-          className="cursor-pointer"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
