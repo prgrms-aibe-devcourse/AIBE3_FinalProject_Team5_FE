@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import BoardLayout from "@/components/board-layout";
+import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,14 +80,23 @@ export default function OneLifePage() {
     return false;
   });
   return (
-    <BoardLayout
-      title="혼라이프"
-      subtitle="혼자 사는 일상의 꿀팁과 정보를 나누는 공간"
-    >
-      <section className="py-8">
+    <>
+      <Header />
+
+      {/* 타이틀 섹션 - 공동구매와 완전히 동일 */}
+      <div className="bg-[#FDF6E9] border-b">
+        <div className="container mx-auto px-4 py-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">혼라이프</h1>
+          <p className="text-[15px] text-gray-600">
+            혼자 사는 일상의 꿀팁과 정보를 나누는 공간
+          </p>
+        </div>
+      </div>
+
+      <section className="py-8 bg-background min-h-screen">
         <div className="container mx-auto px-4">
           <div className="flex flex-col lg:flex-row gap-8">
-            <aside className="lg:w-64 flex-shrink-0">
+            <aside className="lg:w-64 shrink-0">
               <Card className="sticky top-20">
                 <CardContent className="p-6">
                   <h3 className="font-semibold mb-4">카테고리</h3>
@@ -149,6 +158,6 @@ export default function OneLifePage() {
           </div>
         </div>
       </section>
-    </BoardLayout>
+    </>
   );
 }

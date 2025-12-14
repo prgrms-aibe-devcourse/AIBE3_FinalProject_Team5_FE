@@ -8,10 +8,25 @@ import { ChatRoom } from "@/types/chat";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import ChatRoomItem from "@/components/chat/ChatRoomItem";
 import ChatRoomDetailModal from "@/components/chat/ChatRoomDetailModal";
 import CreateChatRoomModal from "@/components/chat/CreateChatRoomModal";
 import { Plus } from "lucide-react";
+import { getCategoryIcon } from "@/lib/utils/categoryIcons";
+
+const CATEGORIES = [
+  { value: "all", label: "전체" },
+  { value: "맛집", label: "맛집" },
+  { value: "운동", label: "운동" },
+  { value: "문화", label: "문화" },
+  { value: "독서", label: "독서" },
+  { value: "요리", label: "요리" },
+  { value: "게임", label: "게임" },
+  { value: "여행", label: "여행" },
+  { value: "스터디", label: "스터디" },
+  { value: "기타", label: "기타" },
+];
 
 export default function ChatPage() {
   const router = useRouter();
@@ -22,15 +37,15 @@ export default function ChatPage() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+
   useEffect(() => {
     loadChatRooms();
   }, []);
 
-  // 채팅방 목록 로드 - 쿠키 기반
   const loadChatRooms = async () => {
     try {
       setIsLoading(true);
-      // 비회원도 목록 조회 가능 (쿠키 자동 포함)
       const rooms = await fetchChatRooms();
       setChatRooms(rooms);
     } catch (error) {
@@ -41,7 +56,6 @@ export default function ChatPage() {
   };
 
   const handleCreateClick = () => {
-    // 로그인 체크
     if (!isLogin) {
       alert("로그인이 필요한 기능입니다.");
       router.push("/login");
@@ -54,6 +68,11 @@ export default function ChatPage() {
     setIsCreateModalOpen(false);
     loadChatRooms();
   };
+
+  const filteredRooms = chatRooms.filter((room) => {
+    if (filterCategory === "all") return true;
+    return room.category === filterCategory;
+  });
 
   if (isLoading) {
     return (
@@ -70,39 +89,91 @@ export default function ChatPage() {
     <>
       <Header />
 
+      {/* 타이틀 섹션 - 공동구매와 완전히 동일 */}
+      <div className="bg-[#FDF6E9] border-b">
+        <div className="container mx-auto px-4 py-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">소모임 채팅</h1>
+          <p className="text-[15px] text-gray-600">
+            로그인하면 소모임을 만들고 참여할 수 있어요!
+          </p>
+        </div>
+      </div>
+
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          {/* 헤더 */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold">소모임 채팅</h1>
-              <p className="text-muted-foreground mt-2">
-                {isLogin
-                  ? "관심있는 소모임에 참여해보세요!"
-                  : "로그인하면 소모임을 만들고 참여할 수 있어요!"}
-              </p>
+          {/* 카테고리와 액션 버튼 */}
+          <div className="flex items-center justify-between mb-8">
+            {/* 가로 스크롤 카테고리 필터 */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide flex-1">
+              {CATEGORIES.map((cat) => {
+                const Icon =
+                  cat.value !== "all" ? getCategoryIcon(cat.value) : null;
+                const isSelected = filterCategory === cat.value;
+
+                return (
+                  <button
+                    key={cat.value}
+                    onClick={() => setFilterCategory(cat.value)}
+                    className={`
+                      flex items-center gap-1.5 px-4 py-2 rounded-full whitespace-nowrap
+                      transition-all duration-200 shrink-0
+                      ${
+                        isSelected
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+                      }
+                    `}
+                  >
+                    {Icon && <Icon className="w-4 h-4" />}
+                    <span className="font-medium">{cat.label}</span>
+                  </button>
+                );
+              })}
             </div>
-            <Button onClick={handleCreateClick} className="gap-2">
+
+            {/* 소모임 만들기 버튼 */}
+            <Button onClick={handleCreateClick} className="gap-2 ml-4 shrink-0">
               <Plus className="w-4 h-4" />
               소모임 만들기
             </Button>
           </div>
 
+          {/* 결과 수 */}
+          <div className="flex items-center justify-between mb-8">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {filteredRooms.length}개
+              </span>
+              의 소모임
+            </p>
+          </div>
+
           {/* 채팅방 목록 */}
-          {chatRooms.length === 0 ? (
+          {filteredRooms.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground mb-4">
-                  아직 생성된 소모임이 없습니다.
+                  {filterCategory === "all"
+                    ? "아직 생성된 소모임이 없습니다."
+                    : `"${filterCategory}" 카테고리의 소모임이 없습니다.`}
                 </p>
-                <Button onClick={handleCreateClick} variant="outline">
-                  첫 소모임 만들기
-                </Button>
+                {filterCategory !== "all" ? (
+                  <Button
+                    onClick={() => setFilterCategory("all")}
+                    variant="outline"
+                  >
+                    전체 보기
+                  </Button>
+                ) : (
+                  <Button onClick={handleCreateClick} variant="outline">
+                    첫 소모임 만들기
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {chatRooms.map((room) => (
+              {filteredRooms.map((room) => (
                 <ChatRoomItem
                   key={room.id}
                   chatRoom={room}

@@ -31,10 +31,51 @@ interface RsData<T> {
   data: T;
 }
 
+// Spring Boot 에러 응답 타입
+interface SpringErrorResponse {
+  timestamp: string;
+  status: number;
+  error: string;
+  message?: string;
+  trace?: string;
+  path?: string;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    // 에러 응답 파싱 개선
+    try {
+      const contentType = response.headers.get("content-type");
+
+      // JSON 응답인 경우
+      if (contentType && contentType.includes("application/json")) {
+        const errorJson: SpringErrorResponse = await response.json();
+
+        // message 필드가 있으면 사용
+        if (errorJson.message) {
+          throw new Error(errorJson.message);
+        }
+
+        // error 필드 사용
+        if (errorJson.error) {
+          throw new Error(errorJson.error);
+        }
+
+        // 둘 다 없으면 전체 JSON을 문자열로
+        throw new Error(JSON.stringify(errorJson));
+      }
+
+      // Text 응답인 경우
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    } catch (error: any) {
+      // JSON 파싱 실패 시
+      if (error instanceof SyntaxError) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      // 이미 Error 객체면 그대로 throw
+      throw error;
+    }
   }
 
   const contentType = response.headers.get("content-type");

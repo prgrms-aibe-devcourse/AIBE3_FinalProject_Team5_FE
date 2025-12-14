@@ -16,6 +16,7 @@ import { MessageType } from "@/types/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Users, MapPin } from "lucide-react";
+import { getCategoryIcon, getCategoryColor } from "@/lib/utils/categoryIcons";
 
 interface ChatRoomProps {
   chatRoomId: number;
@@ -36,8 +37,14 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
     clearMessages,
   } = useChatStore();
 
+  const CategoryIcon = currentChatRoom
+    ? getCategoryIcon(currentChatRoom.category)
+    : null;
+  const categoryColor = currentChatRoom
+    ? getCategoryColor(currentChatRoom.category)
+    : "";
+
   useEffect(() => {
-    // 로그인 체크
     if (!loginMember) {
       alert("로그인이 필요합니다.");
       router.push("/login");
@@ -53,18 +60,14 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
     };
   }, [chatRoomId, loginMember]);
 
-  // 쿠키 기반 - 채팅방 데이터 로드
   const loadChatRoomData = async () => {
     try {
-      // 채팅방 정보 조회
       const room = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(room);
 
-      // 이전 메시지 조회
       const previousMessages = await fetchChatMessages(chatRoomId);
       setMessages(previousMessages);
 
-      // WebSocket 연결
       connectWebSocket();
     } catch (error) {
       console.error("채팅방 데이터 로드 실패:", error);
@@ -89,7 +92,6 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
       (message) => {
         addMessage(message);
 
-        // 입장/퇴장 메시지를 받으면 참여자 수 업데이트
         if (
           message.type === MessageType.ENTER ||
           message.type === MessageType.LEAVE
@@ -99,17 +101,14 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
       },
       () => {
         setIsConnected(true);
-        console.log("✅ WebSocket 연결 완료");
       }
     );
   };
 
-  // 쿠키 기반 - 채팅방 정보 업데이트
   const updateChatRoomInfo = async () => {
     try {
       const updatedRoom = await fetchChatRoom(chatRoomId);
       setCurrentChatRoom(updatedRoom);
-      console.log("✅ 채팅방 정보 업데이트:", updatedRoom);
     } catch (error) {
       console.error("❌ 채팅방 정보 업데이트 실패:", error);
     }
@@ -128,13 +127,10 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
     });
   };
 
-  // 쿠키 기반 - 채팅방 나가기
   const handleLeaveChatRoom = async () => {
     if (!confirm("채팅방을 나가시겠습니까?")) return;
 
     try {
-      console.log("채팅방 나가기 시작...");
-
       // 1. WebSocket 연결 해제
       if (wsClient.current) {
         wsClient.current.disconnect();
@@ -196,6 +192,8 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
             <div className="border-l pl-4">
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-xl font-bold">{currentChatRoom.name}</h1>
+
+                {/* ✅ 소모임 배지 */}
                 <Badge
                   variant="outline"
                   className="bg-primary/10 text-primary border-primary"
@@ -204,6 +202,16 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
                     ? "소모임"
                     : "공동구매"}
                 </Badge>
+
+                {/* 카테고리 배지 추가 */}
+                {currentChatRoom.category && CategoryIcon && (
+                  <Badge variant="outline" className="gap-1">
+                    <CategoryIcon className={`w-3 h-3 ${categoryColor}`} />
+                    {currentChatRoom.category}
+                  </Badge>
+                )}
+
+                {/* 연결 상태 */}
                 {isConnected ? (
                   <span className="flex items-center gap-1 text-xs text-green-600">
                     <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -216,6 +224,7 @@ export default function ChatRoom({ chatRoomId }: ChatRoomProps) {
                   </span>
                 )}
               </div>
+
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />

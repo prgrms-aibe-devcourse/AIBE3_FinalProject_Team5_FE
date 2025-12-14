@@ -11,6 +11,15 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 /**
+ * FileEntity 타입 정의
+ */
+export interface FileEntity {
+  id: number;
+  fileName: string;
+  imgUrl: string;
+}
+
+/**
  * 공통 fetch 옵션 (쿠키 기반 인증)
  */
 function getFetchOptions(method: string = "GET", body?: any): RequestInit {
@@ -34,8 +43,44 @@ function getFetchOptions(method: string = "GET", body?: any): RequestInit {
  */
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    // 에러 응답 파싱 개선
+    try {
+      const contentType = response.headers.get("content-type");
+
+      // JSON 응답인 경우
+      if (contentType && contentType.includes("application/json")) {
+        const errorJson = await response.json();
+
+        // RsData 에러 형태 (resultCode + msg)
+        if (errorJson.resultCode && errorJson.msg) {
+          throw new Error(errorJson.msg);
+        }
+
+        // Spring Boot 에러 형태 (message 필드)
+        if (errorJson.message) {
+          throw new Error(errorJson.message);
+        }
+
+        // Spring Boot 에러 형태 (error 필드)
+        if (errorJson.error) {
+          throw new Error(errorJson.error);
+        }
+
+        // 둘 다 없으면 전체 JSON을 문자열로
+        throw new Error(JSON.stringify(errorJson));
+      }
+
+      // Text 응답인 경우
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    } catch (error: any) {
+      // JSON 파싱 실패 시
+      if (error instanceof SyntaxError) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      // 이미 Error 객체면 그대로 throw
+      throw error;
+    }
   }
 
   const contentType = response.headers.get("content-type");
@@ -53,6 +98,38 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
   // JSON이 아닌 경우
   return undefined as T;
+}
+
+/**
+ * 이미지 업로드 API
+ * @param images 업로드할 이미지 File 배열 (최대 5개)
+ * @returns 업로드된 FileEntity 배열
+ */
+export async function uploadGroupBuyingImages(
+  images: File[]
+): Promise<FileEntity[]> {
+  if (images.length > 5) {
+    throw new Error("이미지는 최대 5개까지 업로드 가능합니다.");
+  }
+
+  const formData = new FormData();
+  images.forEach((image) => {
+    formData.append("images", image);
+  });
+
+  const response = await fetch(`${API_BASE_URL}/group-buying/images`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+    // ⚠️ Content-Type 헤더는 자동 설정됨 (multipart/form-data)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`이미지 업로드 실패: ${errorText}`);
+  }
+
+  return await response.json();
 }
 
 /**
@@ -77,7 +154,8 @@ export async function fetchGroupBuyingPosts(
 }
 
 /**
- * 공동구매 상세 조회 (비회원도 가능)
+ * 공동구매 상세 조회 (조회수 증가 O)
+ * 상세 페이지에서 사용
  */
 export async function fetchGroupBuyingPost(
   postId: number
@@ -91,10 +169,26 @@ export async function fetchGroupBuyingPost(
 }
 
 /**
+ * 공동구매 정보 조회 (조회수 증가 X)
+ * 채팅방 등에서 게시글 정보만 필요할 때 사용
+ */
+export async function fetchGroupBuyingPostInfo(
+  postId: number
+): Promise<GroupBuyingPost> {
+  const response = await fetch(
+    `${API_BASE_URL}/group-buying/${postId}/info`,
+    getFetchOptions()
+  );
+
+  return handleResponse<GroupBuyingPost>(response);
+}
+
+/**
  * 공동구매 게시글 생성 (로그인 필수)
+ * imageIds 추가
  */
 export async function createGroupBuyingPost(
-  data: GroupBuyingCreateRequest
+  data: GroupBuyingCreateRequest & { imageIds?: number[] }
 ): Promise<GroupBuyingPost> {
   const response = await fetch(
     `${API_BASE_URL}/group-buying`,
@@ -195,6 +289,7 @@ export async function updateGroupBuyingPost(
     category: string;
     region: string;
     deadline: string;
+    imageIds?: number[];
   }
 ): Promise<GroupBuyingPost> {
   const response = await fetch(

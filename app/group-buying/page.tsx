@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import BoardLayout from "@/components/board-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { GROUP_BUYING_CATEGORIES } from "@/types/groupBuying";
+import {
+  GROUP_BUYING_CATEGORIES,
+  GroupBuyingPost,
+  GroupBuyingStatus,
+} from "@/types/groupBuying";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,7 +32,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/app/global/auth/useAuth";
 import { fetchGroupBuyingPosts } from "@/lib/api/groupBuyingApi";
-import { GroupBuyingPost, GroupBuyingStatus } from "@/types/groupBuying";
 
 export default function GroupBuyingPage() {
   const router = useRouter();
@@ -80,19 +83,9 @@ export default function GroupBuyingPage() {
     loadPosts();
   }, []);
 
-  useEffect(() => {
-    loadPosts();
-  }, [filterStatus]);
-
   const loadPosts = async () => {
     try {
-      setIsLoading(true);
-      const region = searchRegion || undefined;
-      const status =
-        filterStatus === "all"
-          ? undefined
-          : (filterStatus as GroupBuyingStatus);
-      const data = await fetchGroupBuyingPosts(region, status);
+      const data = await fetchGroupBuyingPosts();
       setPosts(data);
     } catch (error) {
       console.error("게시글 로드 실패:", error);
@@ -101,13 +94,25 @@ export default function GroupBuyingPage() {
     }
   };
 
+  const filteredPosts = posts.filter((post) => {
+    const matchesCategory =
+      selectedCategory === "all" || post.category === selectedCategory;
+    const matchesStatus =
+      filterStatus === "all" || post.status === filterStatus;
+    const matchesRegion =
+      searchRegion === "" ||
+      post.region.toLowerCase().includes(searchRegion.toLowerCase());
+
+    return matchesCategory && matchesStatus && matchesRegion;
+  });
+
   const handleSearch = () => {
-    loadPosts();
+    // 검색 로직은 이미 filteredPosts에서 처리됨
   };
 
   const handleWriteClick = () => {
     if (!isLogin) {
-      alert("로그인이 필요한 기능입니다.");
+      alert("로그인이 필요합니다.");
       router.push("/login");
       return;
     }
@@ -115,87 +120,87 @@ export default function GroupBuyingPage() {
   };
 
   const getStatusBadge = (status: GroupBuyingStatus) => {
-    switch (status) {
-      case GroupBuyingStatus.RECRUITING:
-        return {
-          label: "모집중",
-          variant: "default" as const,
-          className: "bg-green-500",
-        };
-      case GroupBuyingStatus.COMPLETED:
-        return { label: "완료", variant: "outline" as const, className: "" };
-      case GroupBuyingStatus.CANCELLED:
-        return { label: "취소", variant: "outline" as const, className: "" };
-      default:
-        return { label: status, variant: "outline" as const, className: "" };
+    if (status === "RECRUITING") {
+      return {
+        label: "모집중",
+        variant: "default" as const,
+        className: "bg-green-500 hover:bg-green-600 text-white",
+      };
+    } else if (status === "COMPLETED") {
+      return {
+        label: "완료",
+        variant: "secondary" as const,
+        className: "bg-gray-400 text-white",
+      };
     }
+    return {
+      label: status,
+      variant: "secondary" as const,
+      className: "",
+    };
   };
 
-  // 카테고리 색상 - post.category 필드 우선 사용
-  const getCategoryColor = (category?: string) => {
-    switch (category) {
-      case "food":
-        return "bg-orange-100 text-orange-700";
-      case "living":
-        return "bg-blue-100 text-blue-700";
-      case "electronics":
-        return "bg-purple-100 text-purple-700";
-      case "fashion":
-        return "bg-pink-100 text-pink-700";
-      case "beauty":
-        return "bg-rose-100 text-rose-700";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      food: "bg-orange-100 text-orange-800 hover:bg-orange-200",
+      living: "bg-blue-100 text-blue-800 hover:bg-blue-200",
+      electronics: "bg-purple-100 text-purple-800 hover:bg-purple-200",
+      fashion: "bg-pink-100 text-pink-800 hover:bg-pink-200",
+      beauty: "bg-rose-100 text-rose-800 hover:bg-rose-200",
+      etc: "bg-gray-100 text-gray-800 hover:bg-gray-200",
+    };
+    return colors[category] || colors.etc;
   };
 
-  // 카테고리 라벨 - post.category 필드 우선 사용
-  const getCategoryLabel = (category?: string) => {
-    if (
-      category &&
-      GROUP_BUYING_CATEGORIES[category as keyof typeof GROUP_BUYING_CATEGORIES]
-    ) {
-      return GROUP_BUYING_CATEGORIES[
+  const getCategoryLabel = (category: string) => {
+    return (
+      GROUP_BUYING_CATEGORIES[
         category as keyof typeof GROUP_BUYING_CATEGORIES
-      ];
-    }
-    return "기타";
+      ] || "기타"
+    );
   };
 
   const getDeadlineText = (deadline: string, isExpired: boolean) => {
-    if (isExpired) return "마감";
-    const now = new Date();
     const deadlineDate = new Date(deadline);
-    const diff = deadlineDate.getTime() - now.getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
-    if (days < 0) return "마감";
-    if (days === 0) return "오늘 마감";
-    return `${days}일 남음`;
-  };
-
-  const getTimeAgo = (createdAt: string) => {
     const now = new Date();
-    const created = new Date(createdAt);
-    const diff = now.getTime() - created.getTime();
-    const minutes = Math.floor(diff / (1000 * 60));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const diffTime = deadlineDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (minutes < 60) return `${minutes}분 전`;
-    if (hours < 24) return `${hours}시간 전`;
-    return `${days}일 전`;
+    if (isExpired) {
+      return "마감됨";
+    }
+
+    if (diffDays === 0) {
+      return "오늘 마감";
+    } else if (diffDays === 1) {
+      return "내일 마감";
+    } else if (diffDays > 0) {
+      return `${diffDays}일 남음`;
+    } else {
+      return "마감됨";
+    }
   };
 
-  // 필터링 - post.category 필드 사용
-  const filteredPosts = posts.filter((post) => {
-    if (selectedCategory !== "all") {
-      // category 필드가 있으면 그걸 사용, 없으면 "기타"로 처리
-      const postCategory = post.category || "etc";
-      if (postCategory !== selectedCategory) return false;
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffTime / (1000 * 60));
+    const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffMinutes < 1) {
+      return "방금 전";
+    } else if (diffMinutes < 60) {
+      return `${diffMinutes}분 전`;
+    } else if (diffHours < 24) {
+      return `${diffHours}시간 전`;
+    } else if (diffDays < 7) {
+      return `${diffDays}일 전`;
+    } else {
+      return date.toLocaleDateString("ko-KR");
     }
-    return true;
-  });
+  };
 
   if (isLoading) {
     return (
@@ -331,7 +336,6 @@ export default function GroupBuyingPage() {
               <div className="space-y-4">
                 {filteredPosts.map((item) => {
                   const statusBadge = getStatusBadge(item.status);
-                  // post.category 필드 사용
                   const categoryColor = getCategoryColor(item.category);
                   const categoryLabel = getCategoryLabel(item.category);
 
@@ -376,11 +380,14 @@ export default function GroupBuyingPage() {
                                   <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                                       <span className="text-sm font-medium text-primary">
-                                        {item.creatorId}
+                                        {item.creatorNickname?.[0] || "?"}
                                       </span>
                                     </div>
                                     <span className="text-sm text-muted-foreground">
-                                      {getTimeAgo(item.createdAt)}
+                                      {item.creatorNickname || "익명"}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">
+                                      · {getTimeAgo(item.createdAt)}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1 text-sm">
@@ -394,21 +401,47 @@ export default function GroupBuyingPage() {
                                     </span>
                                   </div>
                                 </div>
+                                {/* 조회수 & 채팅 수 */}
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                   <div className="flex items-center gap-1">
                                     <Eye className="h-4 w-4" />
-                                    <span>0</span>
+                                    <span>{item.viewCount ?? 0}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <MessageCircle className="h-4 w-4" />
-                                    <span>0</span>
+                                    <span>
+                                      {item.chatRoomMessageCount ?? 0}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                            <div className="w-32 h-32 shrink-0 flex sm:block bg-muted rounded-lg flex items-center justify-center">
-                              <Users className="h-12 w-12 text-muted-foreground" />
-                            </div>
+                            {/* 이미지 썸네일 */}
+                            {item.images && item.images.length > 0 && (
+                              <div className="w-32 h-32 shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                                <Image
+                                  src={item.images[0]}
+                                  alt={item.title}
+                                  width={128}
+                                  height={128}
+                                  className="w-full h-full object-cover"
+                                  onError={(
+                                    e: React.SyntheticEvent<HTMLImageElement>
+                                  ) => {
+                                    e.currentTarget.style.display = "none";
+                                    const parent =
+                                      e.currentTarget.parentElement;
+                                    if (parent) {
+                                      parent.innerHTML = `
+                                        <svg class="h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                      `;
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>

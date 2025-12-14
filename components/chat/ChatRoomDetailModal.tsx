@@ -7,9 +7,10 @@ import { ChatRoom } from "@/types/chat";
 import { joinChatRoom, fetchChatParticipants } from "@/lib/api/chatApi";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Users, MapPin, Calendar, User } from "lucide-react";
+import { X, Users, MapPin, Calendar, User, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { getCategoryIcon, getCategoryColor } from "@/lib/utils/categoryIcons";
 
 interface ChatRoomDetailModalProps {
   chatRoom: ChatRoom;
@@ -28,6 +29,9 @@ export default function ChatRoomDetailModal({
 
   const isFull = chatRoom.currentParticipants >= chatRoom.maxParticipants;
   const isCreator = loginMember?.id === chatRoom.creatorId;
+
+  const CategoryIcon = getCategoryIcon(chatRoom.category);
+  const categoryColor = getCategoryColor(chatRoom.category);
 
   // 참여자 여부 확인 (컴포넌트 마운트 시)
   useEffect(() => {
@@ -97,28 +101,38 @@ export default function ChatRoomDetailModal({
     } catch (error: any) {
       console.error("❌ [참여하기] API 실패:", error);
 
+      if (
+        error.message?.includes("강퇴") ||
+        error.message?.includes("강제") ||
+        error.message?.includes("차단") ||
+        error.message?.includes("banned")
+      ) {
+        alert("강퇴된 채팅방에는 다시 참여할 수 없습니다.");
+        return;
+      }
+
       // 이미 참여 중인 경우 → 에러를 무시하고 바로 입장
       if (
-        error.message.includes("이미 참여") ||
-        error.message.includes("already") ||
-        error.status === 500
+        error.message?.includes("이미 참여") ||
+        error.message?.includes("already")
       ) {
         console.log("ℹ️ [참여하기] 이미 참여 중 → 바로 입장");
         onClose();
         router.push(`/groups/${chatRoom.id}/chat`);
+        return;
       }
+
       // 인원 마감인 경우
-      else if (
-        error.message.includes("인원") ||
-        error.message.includes("마감") ||
-        error.message.includes("full")
+      if (
+        error.message?.includes("인원") ||
+        error.message?.includes("마감") ||
+        error.message?.includes("full")
       ) {
         alert("이미 인원이 가득 찼습니다.");
+        return;
       }
-      // 기타 에러
-      else {
-        alert("소모임 참여에 실패했습니다: " + error.message);
-      }
+
+      alert(error.message || "소모임 참여에 실패했습니다.");
     } finally {
       setIsJoining(false);
     }
@@ -166,6 +180,17 @@ export default function ChatRoomDetailModal({
               소모임
             </Badge>
           </div>
+
+          {/* 카테고리 배지 추가 */}
+          {chatRoom.category && (
+            <div className="mb-3">
+              <Badge variant="outline" className="gap-1">
+                <CategoryIcon className={`w-3 h-3 ${categoryColor}`} />
+                {chatRoom.category}
+              </Badge>
+            </div>
+          )}
+
           <p className="text-muted-foreground wrap-break-word">
             {chatRoom.description}
           </p>
@@ -174,6 +199,20 @@ export default function ChatRoomDetailModal({
         {/* 상세 정보 */}
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            {/* 카테고리 정보 추가 */}
+            {chatRoom.category && (
+              <div className="flex items-center gap-2">
+                <Tag className="w-5 h-5 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">카테고리</p>
+                  <div className="flex items-center gap-1">
+                    <CategoryIcon className={`w-4 h-4 ${categoryColor}`} />
+                    <p className="font-medium truncate">{chatRoom.category}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <MapPin className="w-5 h-5 text-muted-foreground shrink-0" />
               <div className="min-w-0">
@@ -207,12 +246,13 @@ export default function ChatRoomDetailModal({
               </div>
             </div>
 
+            {/* 방장 닉네임 표시 */}
             <div className="flex items-center gap-2">
               <User className="w-5 h-5 text-muted-foreground shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">방장</p>
                 <p className="font-medium truncate">
-                  ID: {chatRoom.creatorId}
+                  {chatRoom.creatorNickname}
                   {isCreator && <span className="text-primary ml-1">(나)</span>}
                 </p>
               </div>

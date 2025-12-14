@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
@@ -10,6 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/app/global/auth/useAuth";
 import {
   FileText,
@@ -25,10 +32,12 @@ import {
   ChefHat,
   ChevronDown,
   ChevronUp,
+  Share2,
 } from "lucide-react";
 import {
   fetchSavedRecipes,
   deleteRecipe,
+  createShareLink,
   type RecipeResponse,
   mapCategoryToDisplay,
   mapCookingTimeToDisplay,
@@ -78,6 +87,14 @@ interface Chat {
   createdAt: string;
 }
 
+interface Bookmark {
+  id: number;
+  category: string;
+  title: string;
+  author: string;
+  date: string;
+}
+
 export default function MyPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("posts");
@@ -102,6 +119,7 @@ export default function MyPage() {
   const [postPage, setPostPage] = useState(1);
   const [myComments, setMyComments] = useState<Comment[] | null>([]);
   const [commentPage, setCommentPage] = useState(1);
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<Bookmark[] | null>([]);
   const [totalPages, setTotalPages] = useState(0);
   const pageSize = 5;
   const postCategories = ["전체", "자유", "꿀팁", "정보"];
@@ -121,37 +139,72 @@ export default function MyPage() {
 
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareTargetRecipe, setShareTargetRecipe] = useState<RecipeResponse | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [isCopying, setIsCopying] = useState(false);
+  const [isCopySuccess, setIsCopySuccess] = useState(false);
+  const shareInputRef = useRef<HTMLInputElement | null>(null);
 
-  const bookmarkedPosts = [
-    {
-      id: 1,
-      category: "꿀팁",
-      title: "혼자 살 때 꼭 알아야 할 생활비 절약법",
-      author: "절약마스터",
-      date: "1주 전",
-    },
-    {
-      id: 2,
-      category: "정보",
-      title: "2024년 청년 주거지원 정책 총정리",
-      author: "정책알리미",
-      date: "2주 전",
-    },
-  ];
-
-  const following = [
-    { id: 1, nickname: "정리왕", posts: 45 },
-    { id: 2, nickname: "요리초보", posts: 32 },
-    { id: 3, nickname: "절약마스터", posts: 78 },
-  ];
-
-  const followers = [
-    { id: 1, nickname: "혼밥탈출", posts: 23 },
-    { id: 2, nickname: "카페러버", posts: 56 },
-  ];
+  // const bookmarkedPosts = [
+  //   {
+  //     id: 1,
+  //     category: "꿀팁",
+  //     title: "혼자 살 때 꼭 알아야 할 생활비 절약법",
+  //     author: "절약마스터",
+  //     date: "1주 전",
+  //   },
+  //   {
+  //     id: 2,
+  //     category: "정보",
+  //     title: "2024년 청년 주거지원 정책 총정리",
+  //     author: "정책알리미",
+  //     date: "2주 전",
+  //   },
+  // ];
 
   // 하단 게시글, 레시피, 댓글 등 변환시 페이지 초기화
   // useEffect(() => {} ,[])
+
+  const getBookmarks = async () => {
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/v1/members/bookmark?page=${
+          groupChatPage - 1
+        }&size=${pageSize}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("내 북마크 정보를 불러오지 못했습니다.");
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result == null) {
+        return;
+      }
+
+      setTotalPages(result.totalPages);
+      setBookmarkedPosts(result.content);
+      console.log("결과", result.content);
+    } catch (err) {
+      console.error("내 북마크 불러오기 실패:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "bookmarks") {
+      getBookmarks();
+    }
+  }, [activeTab]);
 
   // 마이페이지 유저 정보 불러오기
   useEffect(() => {
@@ -397,6 +450,39 @@ export default function MyPage() {
     }
   };
 
+  const openShareModal = async (recipe: RecipeResponse) => {
+    try {
+      const shareLinkData = await createShareLink(recipe.id);
+      setShareLink(shareLinkData.shareUrl);
+      setShareTargetRecipe(recipe);
+      setShareModalOpen(true);
+      setIsCopySuccess(false);
+    } catch (error) {
+      console.error("공유 링크 생성 실패:", error);
+      alert("공유 링크 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink) return;
+    setIsCopying(true);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+      } else if (shareInputRef.current) {
+        shareInputRef.current.select();
+        document.execCommand("copy");
+      }
+      setIsCopySuccess(true);
+      setTimeout(() => setIsCopySuccess(false), 2000);
+    } catch (error) {
+      console.error("공유 링크 복사 실패:", error);
+      alert("링크 복사에 실패했어요. 다시 시도해주세요.");
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
   const toggleRecipe = (id: number) => {
     const newExpanded = new Set(expandedRecipes);
     if (newExpanded.has(id)) {
@@ -521,8 +607,8 @@ export default function MyPage() {
 
                       <Separator className="mb-6" />
 
-                      <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div className="text-center">
+                      <div className="flex justify-between mb-6">
+                        <div className="flex-1 text-center">
                           <div className="text-2xl font-bold text-primary">
                             {user?.stats?.postCount}
                           </div>
@@ -530,7 +616,7 @@ export default function MyPage() {
                             게시글
                           </div>
                         </div>
-                        <div className="text-center">
+                        <div className="flex-1 text-center">
                           <div className="text-2xl font-bold text-primary">
                             {user?.stats?.commentCount}
                           </div>
@@ -538,20 +624,12 @@ export default function MyPage() {
                             댓글
                           </div>
                         </div>
-                        <div className="text-center">
+                        <div className="flex-1 text-center">
                           <div className="text-2xl font-bold text-primary">
                             {user?.stats?.bookmarkCount}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             북마크
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-primary">
-                            {user?.stats?.followingCount}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            팔로잉
                           </div>
                         </div>
                       </div>
@@ -706,65 +784,55 @@ export default function MyPage() {
                   </Card>
 
                   <Card>
-                    <CardHeader>
-                      <div className="flex gap-2 border-b">
-                        <button
-                          onClick={() => setActiveTab("posts")}
-                          className={`px-4 py-2 font-medium transition-colors ${
-                            activeTab === "posts"
-                              ? "text-primary border-b-2 border-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <FileText className="h-4 w-4 inline mr-2" />내 게시글
-                          ({user?.stats?.postCount})
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("recipes")}
-                          className={`px-4 py-2 font-medium transition-colors ${
-                            activeTab === "recipes"
-                              ? "text-primary border-b-2 border-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <ChefHat className="h-4 w-4 inline mr-2" />내 레시피 (
-                          {myRecipes.length})
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("comments")}
-                          className={`px-4 py-2 font-medium transition-colors ${
-                            activeTab === "comments"
-                              ? "text-primary border-b-2 border-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <MessageCircle className="h-4 w-4 inline mr-2" />내
-                          댓글 ({user?.stats?.commentCount})
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("bookmarks")}
-                          className={`px-4 py-2 font-medium transition-colors ${
-                            activeTab === "bookmarks"
-                              ? "text-primary border-b-2 border-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <Bookmark className="h-4 w-4 inline mr-2" />
-                          북마크 ({user?.stats?.bookmarkCount})
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("following")}
-                          className={`px-4 py-2 font-medium transition-colors ${
-                            activeTab === "following"
-                              ? "text-primary border-b-2 border-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <Users className="h-4 w-4 inline mr-2" />
-                          팔로잉 ({user?.stats?.followingCount})
-                        </button>
-                      </div>
-                    </CardHeader>
+                    <div className="flex border-b">
+                      <button
+                        onClick={() => setActiveTab("posts")}
+                        className={`flex-1 px-4 py-2 text-center font-medium transition-colors ${
+                          activeTab === "posts"
+                            ? "text-primary border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <FileText className="h-4 w-4 inline mr-2" />내 게시글 (
+                        {user?.stats?.postCount})
+                      </button>
+
+                      <button
+                        onClick={() => setActiveTab("recipes")}
+                        className={`flex-1 px-4 py-2 text-center font-medium transition-colors ${
+                          activeTab === "recipes"
+                            ? "text-primary border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <ChefHat className="h-4 w-4 inline mr-2" />내 레시피 (
+                        {myRecipes.length})
+                      </button>
+
+                      <button
+                        onClick={() => setActiveTab("comments")}
+                        className={`flex-1 px-4 py-2 text-center font-medium transition-colors ${
+                          activeTab === "comments"
+                            ? "text-primary border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <MessageCircle className="h-4 w-4 inline mr-2" />내 댓글
+                        ({user?.stats?.commentCount})
+                      </button>
+
+                      <button
+                        onClick={() => setActiveTab("bookmarks")}
+                        className={`flex-1 px-4 py-2 text-center font-medium transition-colors ${
+                          activeTab === "bookmarks"
+                            ? "text-primary border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Bookmark className="h-4 w-4 inline mr-2" />
+                        북마크 ({user?.stats?.bookmarkCount})
+                      </button>
+                    </div>
                     <CardContent>
                       {activeTab === "posts" && (
                         <div className="space-y-4">
@@ -989,7 +1057,36 @@ export default function MyPage() {
                                       </div>
                                     </div>
 
+                                    <div className="pt-6 space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold">관련 유튜브 영상</h3>
+                                      </div>
+                                      {recipe.youtubeUrl ? (
+                                        <div className="aspect-video rounded-lg overflow-hidden border">
+                                          <iframe
+                                            title={`${recipe.title} 관련 유튜브 영상`}
+                                            src={recipe.youtubeUrl}
+                                            className="w-full h-full"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowFullScreen
+                                          />
+                                        </div>
+                                      ) : (
+                                        <p className="text-sm text-muted-foreground">
+                                          저장된 유튜브 영상이 없습니다.
+                                        </p>
+                                      )}
+                                    </div>
+
                                     <div className="flex gap-2 pt-4">
+                                      <Button
+                                        variant="outline"
+                                        className="flex-1 bg-transparent"
+                                        onClick={() => openShareModal(recipe)}
+                                      >
+                                        <Share2 className="h-4 w-4 mr-2" />
+                                        공유
+                                      </Button>
                                       <Button
                                         variant="outline"
                                         className="flex-1 text-destructive bg-transparent"
@@ -1070,7 +1167,7 @@ export default function MyPage() {
 
                       {activeTab === "bookmarks" && (
                         <div className="space-y-3">
-                          {bookmarkedPosts.map((post) => (
+                          {bookmarkedPosts?.map((post) => (
                             <Link
                               key={post.id}
                               href={`/onelife/post/${post.id}`}
@@ -1097,37 +1194,6 @@ export default function MyPage() {
                           ))}
                         </div>
                       )}
-
-                      {activeTab === "following" && (
-                        <div className="space-y-3">
-                          {following.map((user) => (
-                            <Card key={user.id}>
-                              <CardContent className="p-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <Avatar>
-                                      <AvatarFallback>
-                                        {user.nickname[0]}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                      <p className="font-medium">
-                                        {user.nickname}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        게시글 {user.posts}개
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <Button variant="outline" size="sm">
-                                    팔로잉
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -1138,6 +1204,48 @@ export default function MyPage() {
       </main>
 
       <Footer />
+
+      {/* 공유 링크 모달 */}
+      <Dialog
+        open={shareModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShareModalOpen(false);
+            setShareLink("");
+            setIsCopySuccess(false);
+            setShareTargetRecipe(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="text-lg font-semibold">
+              레시피 공유 링크
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              링크를 복사해 친구에게 보내면 전체 레시피 내용을 바로 볼 수
+              있어요.
+            </p>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                ref={shareInputRef}
+                value={shareLink}
+                readOnly
+                onFocus={(e) => e.target.select()}
+                className="flex-1"
+              />
+              <Button className="whitespace-nowrap" onClick={copyShareLink} disabled={isCopying}>
+                {isCopying ? "복사 중..." : "링크 복사"}
+              </Button>
+            </div>
+            {isCopySuccess && (
+              <p className="text-xs text-green-600">복사되었어요!</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

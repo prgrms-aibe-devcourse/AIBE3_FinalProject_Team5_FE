@@ -24,9 +24,9 @@ export class ChatWebSocketClient {
   }
 
   connect(
-    chatRoomId: number,
-    onMessage: (message: ChatMessage) => void,
-    onConnect?: () => void
+      chatRoomId: number,
+      onMessage: (message: ChatMessage) => void,
+      onConnect?: () => void
   ) {
     this.chatRoomId = chatRoomId;
     this.onMessageReceived = onMessage;
@@ -113,12 +113,12 @@ export class ChatWebSocketClient {
     if (!this.client || !this.client.active || !this.isConnectedState) {
       console.error("❌ WebSocket이 연결되지 않았습니다.");
       console.error(
-        "client:",
-        !!this.client,
-        "active:",
-        this.client?.active,
-        "state:",
-        this.isConnectedState
+          "client:",
+          !!this.client,
+          "active:",
+          this.client?.active,
+          "state:",
+          this.isConnectedState
       );
       return;
     }
@@ -130,9 +130,9 @@ export class ChatWebSocketClient {
       });
 
       console.log(
-        "메시지 전송 성공:",
-        message.type,
-        message.content.substring(0, 20)
+          "메시지 전송 성공:",
+          message.type,
+          message.content.substring(0, 20)
       );
     } catch (error) {
       console.error("❌ 메시지 전송 실패:", error);
