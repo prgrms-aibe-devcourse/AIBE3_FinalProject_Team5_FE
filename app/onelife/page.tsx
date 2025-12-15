@@ -1,23 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import BoardLayout from "@/components/board-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import PaginatedPosts from "@/components/paginated-posts";
 import { getOneLifePosts, getHotPosts } from "../api/post/postapi";
 import { useAuth } from "@/app/global/auth/useAuth";
 import type { PostResponse } from "../onelife/types/postResponse";
-import { useRouter } from "next/navigation";
 
 export default function OneLifePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [posts, setPosts] = useState<PostResponse[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [totalPages, setTotalPages] = useState(0);
+  const [page, setPage] = useState(1);
+
   const { isAdmin, isLogin } = useAuth();
   const searchParams = useSearchParams();
   const [keyword, setKeyword] = useState("");
@@ -38,11 +40,13 @@ export default function OneLifePage() {
     };
 
     setSelectedCategory(map[raw] || raw);
+    setPage(1);
   }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchKeyword(keyword);
+      setPage(1);
     }, 500);
 
     return () => clearTimeout(timer);
@@ -55,9 +59,13 @@ export default function OneLifePage() {
 
         const data =
           selectedCategory === "hot"
-            ? await getHotPosts({ page: 0, size: 10, keyword: searchKeyword })
+            ? await getHotPosts({
+                page: page - 1,
+                size: 5,
+                keyword: searchKeyword,
+              })
             : await getOneLifePosts({
-                page: 0,
+                page: page - 1,
                 size: 10,
                 type:
                   selectedCategory === "all"
@@ -67,6 +75,7 @@ export default function OneLifePage() {
               });
 
         setPosts(data.data.content);
+        setTotalPages(data.data.totalPages);
         setTotalCount(data.data.totalElements);
       } catch (e) {
         console.error(e);
@@ -76,7 +85,15 @@ export default function OneLifePage() {
     }
 
     fetchPosts();
-  }, [selectedCategory, keyword]);
+  }, [selectedCategory, searchKeyword, page]);
+
+  function goto(p: number) {
+    if (p < 1 || p > totalPages) return;
+    setPage(p);
+
+    const el = document.querySelector("#onelife-posts");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const categories = [
     { id: "All", label: "전체", value: "all" },
@@ -161,6 +178,38 @@ export default function OneLifePage() {
                     posts={posts}
                     selectedCategory={selectedCategory}
                   />
+
+                  {/* 페이지네이션 */}
+                  <div className="flex justify-center gap-2 mt-8">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => goto(page - 1)}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft />
+                    </Button>
+
+                    {Array.from({ length: totalPages }).map((_, i) => (
+                      <Button
+                        key={i}
+                        size="icon"
+                        variant={page === i + 1 ? "default" : "outline"}
+                        onClick={() => goto(i + 1)}
+                      >
+                        {i + 1}
+                      </Button>
+                    ))}
+
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => goto(page + 1)}
+                      disabled={page === totalPages}
+                    >
+                      <ChevronRight />
+                    </Button>
+                  </div>
                 </>
               )}
             </div>

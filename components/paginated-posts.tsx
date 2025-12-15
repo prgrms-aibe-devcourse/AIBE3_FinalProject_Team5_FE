@@ -20,7 +20,7 @@ interface PaginatedPostsProps {
   posts: PostResponse[];
   selectedCategory?: string;
 }
-
+//
 export default function PaginatedPosts({
   posts,
   selectedCategory,
@@ -148,38 +148,6 @@ export default function PaginatedPosts({
             </Card>
           </Link>
         ))}
-      </div>
-
-      <div className="flex items-center justify-center gap-2 mt-8">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => goto(page - 1)}
-          disabled={page === 1}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-
-        {Array.from({ length: totalPages }).map((_, i) => (
-          <Button
-            key={i}
-            variant={page === i + 1 ? "default" : "ghost"}
-            size="icon"
-            onClick={() => goto(i + 1)}
-            className={page === i + 1 ? "bg-primary" : ""}
-          >
-            {i + 1}
-          </Button>
-        ))}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => goto(page + 1)}
-          disabled={page === totalPages}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
       </div>
     </>
   );
