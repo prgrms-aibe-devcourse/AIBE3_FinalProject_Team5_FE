@@ -36,6 +36,13 @@ import { ChatMessage, MessageType } from "@/types/chat";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
+// UTC 시간을 한국 시간으로 변환
+const formatKoreanTime = (dateString: string): string => {
+  if (!dateString) return "";
+  const utcDate = new Date(dateString + "Z");
+  return format(utcDate, "a h:mm", { locale: ko });
+};
+
 export default function GroupBuyingChatPage() {
   const router = useRouter();
   const params = useParams();
@@ -452,9 +459,7 @@ export default function GroupBuyingChatPage() {
                           </div>
                           <span className="text-xs text-muted-foreground mt-1">
                             {msg.createdAt
-                              ? format(new Date(msg.createdAt), "a h:mm", {
-                                  locale: ko,
-                                })
+                              ? formatKoreanTime(msg.createdAt)
                               : ""}
                           </span>
                         </div>
