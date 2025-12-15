@@ -78,6 +78,14 @@ export default function PostDetailFetch({ id }: { id: string }) {
 
   if (loading) return <div>로딩 중...</div>;
   if (!post) return <div>게시글을 찾을 수 없습니다.</div>;
+
+  const CATEGORY_LABEL_MAP: Record<string, string> = {
+    TIP: "꿀팁",
+    INFO: "정보",
+    HOT: "인기",
+    FREE: "자유",
+    ALL: "전체",
+  };
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -100,7 +108,9 @@ export default function PostDetailFetch({ id }: { id: string }) {
 
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-4">
-                <Badge variant="secondary">{post.postType}</Badge>
+                <Badge variant="secondary">
+                  {CATEGORY_LABEL_MAP[post.postType] ?? post.postType}
+                </Badge>
                 <span className="text-sm text-muted-foreground">
                   {new Date(post.createdAt).toLocaleString()}
                 </span>

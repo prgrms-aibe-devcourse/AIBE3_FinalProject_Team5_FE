@@ -45,6 +45,13 @@ export default function PaginatedPosts({
     const el = document.querySelector("#onelife-posts");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  const CATEGORY_LABEL_MAP: Record<string, string> = {
+    TIP: "꿀팁",
+    INFO: "정보",
+    HOT: "인기",
+    FREE: "자유",
+    ALL: "전체",
+  };
 
   return (
     <>
@@ -64,7 +71,7 @@ export default function PaginatedPosts({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                        {post.postType}
+                        {CATEGORY_LABEL_MAP[post.postType] ?? post.postType}
                       </Badge>
                       {post.hot === true && (
                         <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
