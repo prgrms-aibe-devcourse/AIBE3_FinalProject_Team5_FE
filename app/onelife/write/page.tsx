@@ -168,7 +168,7 @@ export default function WritePostPage() {
                         클릭하여 사진을 업로드하세요
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        소모임을 대표할 수 있는 사진을 추가해보세요
+                        게시글을 대표할 수 있는 사진을 추가해보세요
                       </p>
                     </label>
                   </div>

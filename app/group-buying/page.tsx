@@ -40,6 +40,7 @@ export default function GroupBuyingPage() {
   const [posts, setPosts] = useState<GroupBuyingPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchRegion, setSearchRegion] = useState("");
+  const [debouncedRegion, setDebouncedRegion] = useState("");
   const [filterStatus, setFilterStatus] = useState<GroupBuyingStatus | "all">(
     "all"
   );
@@ -80,15 +81,29 @@ export default function GroupBuyingPage() {
   ];
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedRegion(searchRegion);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchRegion]);
+
+  useEffect(() => {
     loadPosts();
-  }, []);
+  }, [debouncedRegion, filterStatus]);
 
   const loadPosts = async () => {
     try {
-      const data = await fetchGroupBuyingPosts();
+      setIsLoading(true);
+
+      const region = debouncedRegion.trim() || undefined;
+      const status = filterStatus === "all" ? undefined : filterStatus;
+
+      const data = await fetchGroupBuyingPosts(region, status);
       setPosts(data);
     } catch (error) {
       console.error("게시글 로드 실패:", error);
+      alert("게시글을 불러오는데 실패했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -97,17 +112,11 @@ export default function GroupBuyingPage() {
   const filteredPosts = posts.filter((post) => {
     const matchesCategory =
       selectedCategory === "all" || post.category === selectedCategory;
-    const matchesStatus =
-      filterStatus === "all" || post.status === filterStatus;
-    const matchesRegion =
-      searchRegion === "" ||
-      post.region.toLowerCase().includes(searchRegion.toLowerCase());
-
-    return matchesCategory && matchesStatus && matchesRegion;
+    return matchesCategory;
   });
 
   const handleSearch = () => {
-    // 검색 로직은 이미 filteredPosts에서 처리됨
+    setDebouncedRegion(searchRegion);
   };
 
   const handleWriteClick = () => {
@@ -288,6 +297,14 @@ export default function GroupBuyingPage() {
                     }
                   }}
                 />
+                {searchRegion && (
+                  <button
+                    onClick={() => setSearchRegion("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
               <Button
                 className="bg-primary text-primary-foreground w-full sm:w-auto"
@@ -296,6 +313,16 @@ export default function GroupBuyingPage() {
                 <PenSquare className="h-4 w-4 mr-2" /> 글쓰기
               </Button>
             </div>
+
+            {/* 검색 상태 표시 */}
+            {debouncedRegion && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <span className="font-semibold">"{debouncedRegion}"</span>{" "}
+                  지역으로 검색 중...
+                </p>
+              </div>
+            )}
 
             {/* Sort and Count */}
             <div className="flex items-center justify-between mb-6">
@@ -327,9 +354,15 @@ export default function GroupBuyingPage() {
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
-                    공동구매 게시글이 없습니다.
+                    {debouncedRegion || filterStatus !== "all"
+                      ? "검색 결과가 없습니다."
+                      : "공동구매 게시글이 없습니다."}
                   </p>
-                  <Button onClick={handleWriteClick}>첫 게시글 작성하기</Button>
+                  {!debouncedRegion && filterStatus === "all" && (
+                    <Button onClick={handleWriteClick}>
+                      첫 게시글 작성하기
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -401,7 +434,6 @@ export default function GroupBuyingPage() {
                                     </span>
                                   </div>
                                 </div>
-                                {/* 조회수 & 채팅 수 */}
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                   <div className="flex items-center gap-1">
                                     <Eye className="h-4 w-4" />
@@ -416,7 +448,6 @@ export default function GroupBuyingPage() {
                                 </div>
                               </div>
                             </div>
-                            {/* 이미지 썸네일 */}
                             {item.images && item.images.length > 0 && (
                               <div className="w-32 h-32 shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
                                 <Image
