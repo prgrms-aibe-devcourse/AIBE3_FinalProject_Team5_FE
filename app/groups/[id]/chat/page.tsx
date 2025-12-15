@@ -525,7 +525,7 @@ export default function GroupChatPage({
                                 </div>
 
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(msg.createdAt), "HH:mm", {
+                                  {format(new Date(msg.createdAt), "a h:mm", {
                                     locale: ko,
                                   })}
                                 </p>
@@ -736,7 +736,7 @@ export default function GroupChatPage({
                       <p className="text-xs opacity-80">
                         {format(
                           new Date(participant.joinedAt),
-                          "yyyy.MM.dd HH:mm",
+                          "yyyy.MM.dd a h:mm",
                           { locale: ko }
                         )}{" "}
                         입장

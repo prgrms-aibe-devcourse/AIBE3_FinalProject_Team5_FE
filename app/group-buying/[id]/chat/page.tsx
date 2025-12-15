@@ -452,7 +452,7 @@ export default function GroupBuyingChatPage() {
                           </div>
                           <span className="text-xs text-muted-foreground mt-1">
                             {msg.createdAt
-                              ? format(new Date(msg.createdAt), "HH:mm", {
+                              ? format(new Date(msg.createdAt), "a h:mm", {
                                   locale: ko,
                                 })
                               : ""}
