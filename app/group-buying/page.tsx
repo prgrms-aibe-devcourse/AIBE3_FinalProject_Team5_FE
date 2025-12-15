@@ -27,6 +27,7 @@ import {
   Clock,
   Search,
   PenSquare,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -114,6 +115,10 @@ export default function GroupBuyingPage() {
       selectedCategory === "all" || post.category === selectedCategory;
     return matchesCategory;
   });
+
+  const handleClearSearch = () => {
+    setSearchRegion("");
+  };
 
   const handleWriteClick = () => {
     if (!isLogin) {
@@ -283,11 +288,23 @@ export default function GroupBuyingPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="지역으로 검색 (예: 강남구)..."
-                  className="pl-10"
+                  placeholder="지역으로 검색 (예: 식사, 강남구)..."
+                  className="pl-10 pr-10"
                   value={searchRegion}
-                  onChange={(e) => setSearchRegion(e.target.value)}
+                  onChange={(e) => {
+                    console.log("입력:", e.target.value);
+                    setSearchRegion(e.target.value);
+                  }}
                 />
+                {/* X 버튼 */}
+                {searchRegion && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
               <Button
                 className="bg-primary text-primary-foreground w-full sm:w-auto"
@@ -305,8 +322,8 @@ export default function GroupBuyingPage() {
                   지역 검색 결과
                 </p>
                 <button
-                  onClick={() => setSearchRegion("")}
-                  className="text-blue-800 hover:text-blue-900 text-sm font-medium"
+                  onClick={handleClearSearch}
+                  className="text-blue-800 hover:text-blue-900 text-sm font-medium underline"
                 >
                   초기화
                 </button>
@@ -349,7 +366,7 @@ export default function GroupBuyingPage() {
                   </p>
                   {debouncedRegion && (
                     <Button
-                      onClick={() => setSearchRegion("")}
+                      onClick={handleClearSearch}
                       variant="outline"
                       className="mb-2"
                     >
