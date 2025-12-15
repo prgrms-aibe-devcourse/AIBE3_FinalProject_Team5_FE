@@ -107,24 +107,42 @@ export default function GroupChatPage({
     } catch (error: any) {
       console.error("❌ 채팅방 데이터 로드 실패:", error);
 
+      console.log("에러 응답 전체:", error.response);
+
       let errorMessage = "채팅방을 불러오는데 실패했습니다.";
 
+      // 방법 1: error.response?.data?.msg (RsData 형식)
       if (error.response?.data?.msg) {
         const msg = error.response.data.msg;
+        errorMessage = msg;
 
+        // 추가 처리: 더 명확한 메시지
         if (msg.includes("강퇴")) {
           errorMessage = "강퇴된 채팅방에는 다시 참여할 수 없습니다.";
         } else if (msg.includes("참여자만")) {
           errorMessage = "채팅방 참여자만 입장할 수 있습니다.";
-        } else if (msg.includes("존재하지 않는")) {
-          errorMessage = "존재하지 않는 채팅방입니다.";
-        } else {
-          errorMessage = msg;
         }
-      } else if (error.response?.status === 403) {
-        errorMessage = "접근 권한이 없습니다.";
+      }
+      // 방법 2: error.response?.data?.message (Spring Boot 기본)
+      else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      // 방법 3: error.message (네트워크 에러)
+      else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      // HTTP 상태 코드별 처리
+      if (error.response?.status === 403) {
+        if (!error.response?.data?.msg && !error.response?.data?.message) {
+          errorMessage = "접근 권한이 없습니다.";
+        }
       } else if (error.response?.status === 404) {
         errorMessage = "채팅방을 찾을 수 없습니다.";
+      } else if (error.response?.status === 500) {
+        if (!error.response?.data?.msg && !error.response?.data?.message) {
+          errorMessage = "서버 오류가 발생했습니다.";
+        }
       }
 
       alert(errorMessage);
