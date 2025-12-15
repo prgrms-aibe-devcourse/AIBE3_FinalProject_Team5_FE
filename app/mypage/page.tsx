@@ -140,7 +140,8 @@ export default function MyPage() {
   const [myRecipes, setMyRecipes] = useState<RecipeResponse[]>([]);
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [shareTargetRecipe, setShareTargetRecipe] = useState<RecipeResponse | null>(null);
+  const [shareTargetRecipe, setShareTargetRecipe] =
+    useState<RecipeResponse | null>(null);
   const [shareLink, setShareLink] = useState("");
   const [isCopying, setIsCopying] = useState(false);
   const [isCopySuccess, setIsCopySuccess] = useState(false);
@@ -188,12 +189,17 @@ export default function MyPage() {
 
       const result = await res.json();
 
+      const posts = result.content.map((item: any) => ({
+        ...item,
+        category: convertEnumToCategory(item.category),
+      }));
+
       if (result == null) {
         return;
       }
 
       setTotalPages(result.totalPages);
-      setBookmarkedPosts(result.content);
+      setBookmarkedPosts(posts);
       console.log("결과", result.content);
     } catch (err) {
       console.error("내 북마크 불러오기 실패:", err);
@@ -1059,7 +1065,9 @@ export default function MyPage() {
 
                                     <div className="pt-6 space-y-3">
                                       <div className="flex items-center justify-between">
-                                        <h3 className="font-semibold">관련 유튜브 영상</h3>
+                                        <h3 className="font-semibold">
+                                          관련 유튜브 영상
+                                        </h3>
                                       </div>
                                       {recipe.youtubeUrl ? (
                                         <div className="aspect-video rounded-lg overflow-hidden border">
@@ -1179,7 +1187,7 @@ export default function MyPage() {
                                       {post.category}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground">
-                                      {post.date}
+                                      {formatDate(post.date)}
                                     </span>
                                   </div>
                                   <h4 className="font-semibold mb-2">
@@ -1236,7 +1244,11 @@ export default function MyPage() {
                 onFocus={(e) => e.target.select()}
                 className="flex-1"
               />
-              <Button className="whitespace-nowrap" onClick={copyShareLink} disabled={isCopying}>
+              <Button
+                className="whitespace-nowrap"
+                onClick={copyShareLink}
+                disabled={isCopying}
+              >
                 {isCopying ? "복사 중..." : "링크 복사"}
               </Button>
             </div>
