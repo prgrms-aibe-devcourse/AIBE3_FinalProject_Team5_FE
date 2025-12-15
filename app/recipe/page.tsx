@@ -136,11 +136,19 @@ export default function RecipePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 공백 입력 체크
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      alert("요리 설명을 입력해주세요.");
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
       const request = {
-        prompt: query,
+        prompt: trimmedQuery,
         category: category || undefined,
         cookingTime: cookingTime || undefined,
         difficulty: difficulty || undefined,
@@ -655,11 +663,33 @@ export default function RecipePage() {
                       </div>
                     </div>
 
+                    {/* 필수 필드 선택 안내 */}
+                    {(!category || !cookingTime || !difficulty || !servings) && (
+                      <div className="bg-muted/50 border border-muted-foreground/20 rounded-lg p-3">
+                        <p className="text-sm text-muted-foreground text-center">
+                          {(() => {
+                            const missingFields = [];
+                            if (!category) missingFields.push("카테고리");
+                            if (!cookingTime) missingFields.push("조리시간");
+                            if (!difficulty) missingFields.push("난이도");
+                            if (!servings) missingFields.push("인분");
+                            return `레시피 추천을 받으려면 ${missingFields.join(", ")}을(를) 선택해주세요.`;
+                          })()}
+                        </p>
+                      </div>
+                    )}
+
                     <Button
                       type="submit"
                       className="w-full"
                       size="lg"
-                      disabled={isLoading}
+                      disabled={
+                        isLoading ||
+                        !category ||
+                        !cookingTime ||
+                        !difficulty ||
+                        !servings
+                      }
                     >
                       {isLoading ? (
                         <>
