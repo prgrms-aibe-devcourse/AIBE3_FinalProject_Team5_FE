@@ -39,12 +39,6 @@ export default function PaginatedPosts({
     setPage(1);
   }, [selectedCategory]);
 
-  function goto(p: number) {
-    if (p < 1 || p > totalPages) return;
-    setPage(p);
-    const el = document.querySelector("#onelife-posts");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
   const CATEGORY_LABEL_MAP: Record<string, string> = {
     TIP: "꿀팁",
     INFO: "정보",
