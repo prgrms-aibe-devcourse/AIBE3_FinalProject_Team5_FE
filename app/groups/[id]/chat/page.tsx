@@ -35,6 +35,13 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+
+// UTC 시간을 한국 시간으로 변환
+const formatKoreanTime = (dateString: string): string => {
+  if (!dateString) return "";
+  const utcDate = new Date(dateString + "Z");
+  return format(utcDate, "a h:mm", { locale: ko });
+};
 import Link from "next/link";
 import { getCategoryIcon, getCategoryColor } from "@/lib/utils/categoryIcons";
 
@@ -525,9 +532,7 @@ export default function GroupChatPage({
                                 </div>
 
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(msg.createdAt), "HH:mm", {
-                                    locale: ko,
-                                  })}
+                                  {formatKoreanTime(msg.createdAt)}
                                 </p>
                               </div>
                             </div>
@@ -735,8 +740,8 @@ export default function GroupChatPage({
                       <p className="font-medium">{participant.nickname}</p>
                       <p className="text-xs opacity-80">
                         {format(
-                          new Date(participant.joinedAt),
-                          "yyyy.MM.dd HH:mm",
+                          new Date(participant.joinedAt + "Z"),
+                          "yyyy.MM.dd a h:mm",
                           { locale: ko }
                         )}{" "}
                         입장
