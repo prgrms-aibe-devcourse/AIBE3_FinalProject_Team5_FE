@@ -66,7 +66,7 @@ export default function OneLifePage() {
               })
             : await getOneLifePosts({
                 page: page - 1,
-                size: 10,
+                size: 5,
                 type:
                   selectedCategory === "all"
                     ? "ALL"
