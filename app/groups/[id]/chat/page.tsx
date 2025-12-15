@@ -128,7 +128,7 @@ export default function GroupChatPage({
       }
 
       alert(errorMessage);
-      router.push("/chatrooms");
+      router.push("/groups");
     }
   };
 
@@ -155,7 +155,6 @@ export default function GroupChatPage({
     wsClient.current.connect(
       Number(id),
       (message) => {
-        console.log("📨 메시지 수신:", message);
         addMessage(message);
 
         if (message.type === MessageType.KICK) {
@@ -168,7 +167,7 @@ export default function GroupChatPage({
 
             alert("채팅방에서 강퇴되었습니다.");
 
-            router.push("/chatrooms");
+            router.push("/groups");
             return;
           }
         }
