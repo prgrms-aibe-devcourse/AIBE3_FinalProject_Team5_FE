@@ -143,11 +143,11 @@ export default function PostDetailFetch({ id }: { id: string }) {
                 </div>
                 <div className="flex items-center gap-1">
                   <MessageCircle className="h-4 w-4" />
-                  <span>{post.comments}</span>
+                  <span>{post.commentCount}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Heart className="h-4 w-4" />
-                  <span>{post.likes}</span>
+                  <span>{post.likeCount}</span>
                 </div>
               </div>
             </div>

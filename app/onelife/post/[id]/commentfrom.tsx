@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createComment } from "@/app/api/post/commentapi";
+import { useAuth } from "@/app/global/auth/useAuth";
 
 export default function CommentForm({
   postId,
@@ -12,8 +13,13 @@ export default function CommentForm({
 }) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const { isLogin } = useAuth();
 
   async function handleSubmit() {
+    if (!isLogin) {
+      alert("회원만 작성 가능합니다.");
+      return;
+    }
     if (!content.trim()) return;
 
     setLoading(true);

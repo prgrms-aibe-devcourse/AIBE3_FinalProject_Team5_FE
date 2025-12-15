@@ -4,23 +4,51 @@ export async function getOneLifePosts({
   page = 0,
   size = 10,
   type = "ALL",
+  keyword = "",
 }: {
   page?: number;
   size?: number;
   type?: string;
+  keyword?: string;
 }) {
   const query = new URLSearchParams({
     page: String(page),
     size: String(size),
     type,
   });
-
+  if (keyword) query.append("keyword", keyword);
   const res = await fetch(`${BASE_URL}/posts/onelife?${query}`, {
     method: "GET",
     credentials: "include",
   });
 
   if (!res.ok) throw new Error("게시글 목록을 불러오지 못했습니다.");
+  return res.json();
+}
+
+export async function getHotPosts({
+  page = 0,
+  size = 10,
+  keyword = "",
+}: {
+  page?: number;
+  size?: number;
+  keyword?: string;
+}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+  if (keyword) query.append("keyword", keyword);
+  const res = await fetch(`${BASE_URL}/posts/onelife/hot?${query}`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    throw new Error("인기 게시글 목록을 불러오지 못했습니다.");
+  }
+
   return res.json();
 }
 

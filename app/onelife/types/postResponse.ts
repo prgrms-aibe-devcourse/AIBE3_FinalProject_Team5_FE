@@ -12,10 +12,10 @@ export interface PostResponse {
   dislikecount: number;
   createdAt: string;
   updatedAt: string;
-  isHot: boolean;
+  hot: boolean;
   author: boolean;
   admin: boolean;
-  comments?: number;
+  commentCount?: number;
   likes?: number;
   bookmarked?: boolean;
 }
