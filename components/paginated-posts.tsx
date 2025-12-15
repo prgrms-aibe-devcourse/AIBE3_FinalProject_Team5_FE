@@ -66,6 +66,11 @@ export default function PaginatedPosts({
                       <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
                         {post.postType}
                       </Badge>
+                      {post.hot === true && (
+                        <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+                          🔥 인기글
+                        </Badge>
+                      )}
                       <span className="text-sm text-muted-foreground">
                         {new Date(post.createdAt).toLocaleDateString()}
                       </span>
