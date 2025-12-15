@@ -104,10 +104,31 @@ export default function GroupChatPage({
       setMessages(previousMessages);
 
       connectWebSocket();
-    } catch (error) {
-      console.error("채팅방 데이터 로드 실패:", error);
-      alert("채팅방을 불러오는데 실패했습니다.");
-      router.push("/groups");
+    } catch (error: any) {
+      console.error("❌ 채팅방 데이터 로드 실패:", error);
+
+      let errorMessage = "채팅방을 불러오는데 실패했습니다.";
+
+      if (error.response?.data?.msg) {
+        const msg = error.response.data.msg;
+
+        if (msg.includes("강퇴")) {
+          errorMessage = "강퇴된 채팅방에는 다시 참여할 수 없습니다.";
+        } else if (msg.includes("참여자만")) {
+          errorMessage = "채팅방 참여자만 입장할 수 있습니다.";
+        } else if (msg.includes("존재하지 않는")) {
+          errorMessage = "존재하지 않는 채팅방입니다.";
+        } else {
+          errorMessage = msg;
+        }
+      } else if (error.response?.status === 403) {
+        errorMessage = "접근 권한이 없습니다.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "채팅방을 찾을 수 없습니다.";
+      }
+
+      alert(errorMessage);
+      router.push("/chatrooms");
     }
   };
 
@@ -134,7 +155,23 @@ export default function GroupChatPage({
     wsClient.current.connect(
       Number(id),
       (message) => {
+        console.log("📨 메시지 수신:", message);
         addMessage(message);
+
+        if (message.type === MessageType.KICK) {
+          if (message.senderId === loginMember?.id) {
+            console.log("강퇴당함! 자동 퇴장");
+
+            if (wsClient.current?.isConnected()) {
+              wsClient.current.disconnect();
+            }
+
+            alert("채팅방에서 강퇴되었습니다.");
+
+            router.push("/chatrooms");
+            return;
+          }
+        }
 
         const msgType = String(message.type);
         if (
