@@ -115,10 +115,6 @@ export default function GroupBuyingPage() {
     return matchesCategory;
   });
 
-  const handleSearch = () => {
-    setDebouncedRegion(searchRegion);
-  };
-
   const handleWriteClick = () => {
     if (!isLogin) {
       alert("로그인이 필요합니다.");
@@ -291,20 +287,7 @@ export default function GroupBuyingPage() {
                   className="pl-10"
                   value={searchRegion}
                   onChange={(e) => setSearchRegion(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      handleSearch();
-                    }
-                  }}
                 />
-                {searchRegion && (
-                  <button
-                    onClick={() => setSearchRegion("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    ✕
-                  </button>
-                )}
               </div>
               <Button
                 className="bg-primary text-primary-foreground w-full sm:w-auto"
@@ -316,11 +299,17 @@ export default function GroupBuyingPage() {
 
             {/* 검색 상태 표시 */}
             {debouncedRegion && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                 <p className="text-sm text-blue-800">
                   <span className="font-semibold">"{debouncedRegion}"</span>{" "}
-                  지역으로 검색 중...
+                  지역 검색 결과
                 </p>
+                <button
+                  onClick={() => setSearchRegion("")}
+                  className="text-blue-800 hover:text-blue-900 text-sm font-medium"
+                >
+                  초기화
+                </button>
               </div>
             )}
 
@@ -358,6 +347,15 @@ export default function GroupBuyingPage() {
                       ? "검색 결과가 없습니다."
                       : "공동구매 게시글이 없습니다."}
                   </p>
+                  {debouncedRegion && (
+                    <Button
+                      onClick={() => setSearchRegion("")}
+                      variant="outline"
+                      className="mb-2"
+                    >
+                      검색 초기화
+                    </Button>
+                  )}
                   {!debouncedRegion && filterStatus === "all" && (
                     <Button onClick={handleWriteClick}>
                       첫 게시글 작성하기
