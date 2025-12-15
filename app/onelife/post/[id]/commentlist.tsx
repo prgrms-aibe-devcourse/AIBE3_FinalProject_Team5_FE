@@ -6,6 +6,7 @@ import {
   deleteComment,
   updateComment,
 } from "@/app/api/post/commentapi";
+import { useAuth } from "@/app/global/auth/useAuth";
 
 export default function CommentList({
   postId,
@@ -17,6 +18,7 @@ export default function CommentList({
   const [comments, setComments] = useState([]);
   const [editId, setEditId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
+  const { loginMember, isLogin, isAdmin } = useAuth();
 
   useEffect(() => {
     async function fetchComments() {
@@ -58,57 +60,64 @@ export default function CommentList({
 
   return (
     <div className="space-y-4 mt-8">
-      {comments.map((c: any) => (
-        <div key={c.id} className="border rounded-lg p-4">
-          <p className="font-medium">{c.memberNickname}</p>
+      {comments.map((c: any) => {
+        const canModify =
+          isLogin && (loginMember?.id === c.memberId || isAdmin);
 
-          {editId === c.id ? (
-            <>
-              <textarea
-                className="w-full mt-2 p-2 border rounded-md"
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-              />
+        return (
+          <div key={c.id} className="border rounded-lg p-4">
+            <p className="font-medium">{c.memberNickname}</p>
 
-              <div className="flex gap-2 mt-2">
+            {editId === c.id ? (
+              <>
+                <textarea
+                  className="w-full mt-2 p-2 border rounded-md"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                />
+
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleUpdate(c.id)}
+                    className="px-3 py-1 bg-blue-600 text-white rounded-md"
+                  >
+                    수정 완료
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    className="px-3 py-1 bg-gray-300 rounded-md"
+                  >
+                    취소
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm mt-1">{c.content}</p>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-2">
+              {new Date(c.createdAt).toLocaleString()}
+            </p>
+
+            {canModify && (
+              <div className="flex gap-3 mt-3 text-sm">
                 <button
-                  onClick={() => handleUpdate(c.id)}
-                  className="px-3 py-1 bg-blue-600 text-white rounded-md"
+                  onClick={() => startEdit(c)}
+                  className="text-blue-600 hover:underline"
                 >
-                  수정 완료
+                  수정
                 </button>
                 <button
-                  onClick={cancelEdit}
-                  className="px-3 py-1 bg-gray-300 rounded-md"
+                  onClick={() => handleDelete(c.id)}
+                  className="text-red-600 hover:underline"
                 >
-                  취소
+                  삭제
                 </button>
               </div>
-            </>
-          ) : (
-            <p className="text-sm mt-1">{c.content}</p>
-          )}
-
-          <p className="text-xs text-muted-foreground mt-2">
-            {new Date(c.createdAt).toLocaleString()}
-          </p>
-
-          <div className="flex gap-3 mt-3 text-sm">
-            <button
-              onClick={() => startEdit(c)}
-              className="text-blue-600 hover:underline"
-            >
-              수정
-            </button>
-            <button
-              onClick={() => handleDelete(c.id)}
-              className="text-red-600 hover:underline"
-            >
-              삭제
-            </button>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

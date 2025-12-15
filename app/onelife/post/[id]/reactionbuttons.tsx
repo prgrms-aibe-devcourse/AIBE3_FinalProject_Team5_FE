@@ -11,12 +11,15 @@ import {
 interface ReactionButtonsProps {
   post: PostResponse;
 }
+import { useAuth } from "@/app/global/auth/useAuth";
+import { useRouter } from "next/navigation";
 
 export default function ReactionButtons({ post }: ReactionButtonsProps) {
   const [selected, setSelected] = useState<"LIKE" | "DISLIKE" | null>(null);
   const [likeCount, setLikeCount] = useState<number>(0);
   const [dislikeCount, setDislikeCount] = useState<number>(0);
-
+  const { isLogin } = useAuth();
+  const router = useRouter();
   const postId = post.id;
 
   useEffect(() => {
@@ -36,6 +39,13 @@ export default function ReactionButtons({ post }: ReactionButtonsProps) {
   }, [postId]);
 
   const handleSelect = async (type: "LIKE" | "DISLIKE") => {
+    if (!isLogin) {
+      const goLogin = window.confirm(
+        "회원만 좋아요/싫어요를 누를 수 있습니다.\n로그인 페이지로 이동하시겠습니까?"
+      );
+      if (goLogin) router.push("/login");
+      return;
+    }
     setSelected(type);
 
     try {

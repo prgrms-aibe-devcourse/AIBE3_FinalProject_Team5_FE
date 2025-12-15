@@ -11,16 +11,18 @@ import PaginatedPosts from "@/components/paginated-posts";
 import { getOneLifePosts, getHotPosts } from "../api/post/postapi";
 import { useAuth } from "@/app/global/auth/useAuth";
 import type { PostResponse } from "../onelife/types/postResponse";
+import { useRouter } from "next/navigation";
 
 export default function OneLifePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [posts, setPosts] = useState<PostResponse[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLogin } = useAuth();
   const searchParams = useSearchParams();
   const [keyword, setKeyword] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
     if (!searchParams) return;
@@ -126,8 +128,17 @@ export default function OneLifePage() {
                     onChange={(e) => setKeyword(e.target.value)}
                   />
                 </div>
-                <Button className="bg-primary hover:bg-primary/90" asChild>
-                  <a href="/onelife/write">+ 글쓰기</a>
+                <Button
+                  className="bg-primary hover:bg-primary/90"
+                  onClick={() => {
+                    if (!isLogin) {
+                      alert("회원만 작성 가능합니다.");
+                      return;
+                    }
+                    router.push("/onelife/write");
+                  }}
+                >
+                  + 글쓰기
                 </Button>
               </div>
               {selectedCategory === "info" && !isAdmin && (

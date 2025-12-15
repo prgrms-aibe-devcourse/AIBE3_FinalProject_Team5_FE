@@ -1,6 +1,10 @@
+"use client";
+
 import { useState } from "react";
 import { Bookmark } from "lucide-react";
 import { addBookmark, removeBookmark } from "@/app/api/bookmark/api";
+import { useAuth } from "@/app/global/auth/useAuth";
+import { useRouter } from "next/navigation";
 
 export default function BookmarkButton({
   type,
@@ -13,11 +17,23 @@ export default function BookmarkButton({
 }) {
   const [isBookmarked, setIsBookmarked] = useState(initial ?? false);
   const [loading, setLoading] = useState(false);
+  const { isLogin } = useAuth();
+  const router = useRouter();
 
   const toggleBookmark = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
+    if (!isLogin) {
+      if (
+        confirm(
+          "회원만 북마크를 사용할 수 있습니다 \n로그인 페이지로 이동하시겠습니까?"
+        )
+      ) {
+        router.push("/login");
+      }
+      return;
+    }
     if (loading) return;
     setLoading(true);
 
